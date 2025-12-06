@@ -1,9 +1,12 @@
-import { useState } from "react";
+import React, { useState } from "react";
 
-// --- DADOS DO PROTOCOLO ---
-const protocolo = {
+// ==========================================
+// 1. DADOS DOS PROTOCOLOS (FLUXOGRAMAS)
+// ==========================================
+
+const protocoloBradicardia = {
   inicio: {
-    titulo: "Abordagem Inicial",
+    titulo: "Abordagem Inicial (Bradicardia)",
     instrucoes: [
       "Identifique a Bradicardia (FC < 50 bpm).",
       "Realize MOV (Monitor, Oxigênio, Veia).",
@@ -79,7 +82,7 @@ const protocolo = {
     ],
     tipo: "sucesso",
     opcoes: [
-      { texto: "Reiniciar", proximoId: "inicio", tema: "neutro" }
+      { texto: "Reiniciar Fluxo", proximoId: "inicio", tema: "neutro" }
     ]
   },
   tipo_bloqueio_instavel: {
@@ -123,7 +126,7 @@ const protocolo = {
     ],
     tipo: "sucesso",
     opcoes: [
-      { texto: "Reiniciar", proximoId: "inicio", tema: "neutro" }
+      { texto: "Reiniciar Fluxo", proximoId: "inicio", tema: "neutro" }
     ]
   },
   marcapasso_drogas: {
@@ -215,151 +218,274 @@ const protocolo = {
   }
 };
 
-export default function App() {
-  // @ts-ignore
-  const [passoAtual, setPassoAtual] = useState("inicio");
-  // @ts-ignore
-  const dados = protocolo[passoAtual];
+// ==========================================
+// 2. LÓGICA DO SIMULADOR (GAME)
+// ==========================================
+// Cenário inicial
+const cenarioInicial = {
+  historia: "Paciente 68 anos, chega ao PS com tontura e mal-estar. Nega dor torácica.",
+  sinais: { fc: 32, pa: "80/40", sat: 94, consciencia: "Sonolento" },
+  feedback: "Paciente monitorizado. O que você faz?"
+};
 
-  const cores: any = {
-    fundo: "#f0f2f5",
-    card: "#ffffff",
-    texto: "#1f2937",
-    neutro: "#3b82f6",
-    sucesso: "#10b981",
-    alerta: "#f59e0b",
-    perigo: "#ef4444",
-    azul: "#0ea5e9"
+// ==========================================
+// 3. COMPONENTE PRINCIPAL (APP)
+// ==========================================
+export default function App() {
+  // Estado para controlar em qual tela o usuário está
+  // telas: 'menu', 'selecao_bradi', 'fluxo_bradi', 'treino_bradi'
+  const [telaAtual, setTelaAtual] = useState("menu");
+  
+  // Estado para o fluxo guiado
+  const [passoFluxo, setPassoFluxo] = useState("inicio");
+  
+  // Estados para o simulador
+  const [sinaisVitais, setSinaisVitais] = useState(cenarioInicial.sinais);
+  const [feedbackSimulacao, setFeedbackSimulacao] = useState(cenarioInicial.feedback);
+  const [etapaSimulacao, setEtapaSimulacao] = useState("inicio");
+
+  // --- FUNÇÕES DE NAVEGAÇÃO ---
+  const irParaMenu = () => {
+    setTelaAtual("menu");
+    setPassoFluxo("inicio");
+    resetSimulacao();
   };
 
-  // O SEGREDO ESTÁ AQUI: O ": any" desliga o erro de TypeScript
-  const styles: any = {
-    appContainer: {
-      minHeight: "100vh",
-      backgroundColor: cores.fundo,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-      padding: "20px",
-      boxSizing: "border-box"
-    },
-    card: {
-      backgroundColor: cores.card,
-      width: "100%",
-      maxWidth: "400px",
-      borderRadius: "16px",
-      boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
-      overflow: "hidden",
-      display: "flex",
-      flexDirection: "column"
-    },
-    header: {
-      // @ts-ignore
-      backgroundColor: cores[dados.tipo] || cores.neutro,
-      padding: "16px",
-      textAlign: "center",
-      color: "white"
-    },
-    headerTitle: {
-      margin: 0,
-      fontSize: "14px",
-      fontWeight: "bold",
-      textTransform: "uppercase",
-      letterSpacing: "1px"
-    },
-    contentContainer: {
-      padding: "24px 24px 10px 24px",
-      textAlign: "left"
-    },
-    lista: {
-      margin: 0,
-      paddingLeft: "20px",
-      color: cores.texto,
-      fontSize: "18px",
-      lineHeight: "1.6",
-      fontWeight: "500"
-    },
-    itemLista: {
-      marginBottom: "12px"
-    },
-    botoesContainer: {
-      padding: "20px 24px 30px 24px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px"
-    },
-    botao: (tema: string) => {
-      const temasBtn: any = {
-        verde: "#059669",
-        vermelho: "#dc2626",
-        azul: "#2563eb",
-        cinza: "#4b5563",
-        neutro: "#6b7280",
-        alerta: "#f59e0b"
-      };
-      return {
-        backgroundColor: temasBtn[tema] || temasBtn.azul,
-        color: "white",
-        border: "none",
-        padding: "16px",
-        borderRadius: "10px",
-        fontSize: "16px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        textAlign: "center",
-        width: "100%",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-      };
-    },
-    resetLink: {
-      textAlign: "center",
-      paddingBottom: "16px",
-      color: "#9ca3af",
-      fontSize: "13px",
-      textDecoration: "underline",
-      cursor: "pointer",
-      background: "none",
-      border: "none",
-      width: "100%"
+  const resetSimulacao = () => {
+    setSinaisVitais(cenarioInicial.sinais);
+    setFeedbackSimulacao(cenarioInicial.feedback);
+    setEtapaSimulacao("inicio");
+  };
+
+  // --- LÓGICA DO SIMULADOR (Mini-Game) ---
+  const acaoSimulacao = (acao: string) => {
+    if (acao === "atropina") {
+      setFeedbackSimulacao("Você administrou Atropina 1mg. Aguardando resposta...");
+      setTimeout(() => {
+        setSinaisVitais({ ...sinaisVitais, fc: 35, pa: "78/40" }); // Pouca melhora
+        setFeedbackSimulacao("Sem resposta significativa à Atropina. Paciente continua hipotenso e sonolento.");
+        setEtapaSimulacao("falha_atropina");
+      }, 1500);
+    } 
+    else if (acao === "marcapasso") {
+      setFeedbackSimulacao("Instalando Marcapasso Transcutâneo...");
+      setTimeout(() => {
+        setSinaisVitais({ ...sinaisVitais, fc: 70, pa: "110/70", consciencia: "Melhorando" });
+        setFeedbackSimulacao("Sucesso! Captura elétrica e mecânica confirmadas. Paciente acordando.");
+        setEtapaSimulacao("sucesso");
+      }, 2000);
+    }
+    else if (acao === "observar") {
+      setSinaisVitais({ ...sinaisVitais, fc: 28, pa: "60/30", consciencia: "Inconsciente" });
+      setFeedbackSimulacao("Paciente piorou! Rebaixou nível de consciência. PA inaudível.");
+      setEtapaSimulacao("piora");
     }
   };
 
-  return (
-    <div style={styles.appContainer}>
-      <div style={styles.card}>
-        <div style={styles.header}>
-          <h3 style={styles.headerTitle}>{dados.titulo}</h3>
-        </div>
+  // --- ESTILOS GERAIS ---
+  const styles: any = {
+    container: {
+      minHeight: "100vh",
+      backgroundColor: "#f0f2f5",
+      fontFamily: "Arial, sans-serif",
+      padding: "20px",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center"
+    },
+    card: {
+      backgroundColor: "white",
+      width: "100%",
+      maxWidth: "500px",
+      borderRadius: "16px",
+      padding: "20px",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
+      textAlign: "center"
+    },
+    titulo: { color: "#1f2937", marginBottom: "20px", fontSize: "22px", fontWeight: "bold" },
+    btnMenu: {
+      width: "100%", padding: "18px", margin: "8px 0", borderRadius: "12px",
+      border: "none", fontSize: "16px", fontWeight: "bold", cursor: "pointer",
+      color: "white", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
+    },
+    monitor: {
+      backgroundColor: "#000", color: "#0f0", padding: "20px", borderRadius: "10px",
+      fontFamily: "Courier New, monospace", marginBottom: "20px", textAlign: "left",
+      border: "4px solid #333"
+    },
+    valVital: { fontSize: "28px", fontWeight: "bold", display: "block" },
+    labelVital: { fontSize: "12px", color: "#666", textTransform: "uppercase" },
+    feedbackBox: {
+      backgroundColor: "#fff3cd", color: "#856404", padding: "15px", borderRadius: "8px",
+      marginBottom: "20px", fontSize: "14px"
+    }
+  };
 
-        <div style={styles.contentContainer}>
-          <ol style={styles.lista}>
-            {dados.instrucoes.map((passo: any, index: number) => (
-              <li key={index} style={styles.itemLista}>
-                {passo}
-              </li>
-            ))}
-          </ol>
-        </div>
+  // ==========================================
+  // RENDERIZAÇÃO DAS TELAS
+  // ==========================================
 
-        <div style={styles.botoesContainer}>
-          {dados.opcoes.map((opcao: any, index: number) => (
-            <button
-              key={index}
-              style={styles.botao(opcao.tema)}
-              onClick={() => setPassoAtual(opcao.proximoId)}
-            >
-              {opcao.texto}
-            </button>
-          ))}
-        </div>
-
-        {passoAtual !== "inicio" && (
-          <button style={styles.resetLink} onClick={() => setPassoAtual("inicio")}>
-            Reiniciar
+  // 1. TELA: MENU PRINCIPAL
+  if (telaAtual === "menu") {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <h1 style={styles.titulo}>Protocolos de Emergência</h1>
+          <p style={{marginBottom: "30px", color: "#666"}}>Selecione a emergência:</p>
+          
+          <button style={{...styles.btnMenu, backgroundColor: "#3b82f6"}} onClick={() => setTelaAtual("selecao_bradi")}>
+            ❤️ Bradicardias
           </button>
-        )}
+          <button style={{...styles.btnMenu, backgroundColor: "#ef4444"}} onClick={() => alert("Em construção: Taquicardias")}>
+            ⚡ Taquicardias
+          </button>
+          <button style={{...styles.btnMenu, backgroundColor: "#f59e0b"}} onClick={() => alert("Em construção: SCA")}>
+            💔 Síndrome Coronariana
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // 2. TELA: SELEÇÃO (Fluxo vs Treino)
+  if (telaAtual === "selecao_bradi") {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <button onClick={irParaMenu} style={{float: "left", background: "none", border: "none", fontSize: "20px", cursor: "pointer"}}>⬅</button>
+          <h2 style={styles.titulo}>Bradicardias</h2>
+          <p style={{marginBottom: "30px", color: "#666"}}>Escolha o modo de uso:</p>
+
+          <button style={{...styles.btnMenu, backgroundColor: "#10b981"}} onClick={() => setTelaAtual("fluxo_bradi")}>
+            📖 Fluxo de Atendimento
+            <span style={{fontSize: "12px", opacity: 0.8}}>(Guia Passo a Passo)</span>
+          </button>
+          
+          <button style={{...styles.btnMenu, backgroundColor: "#8b5cf6"}} onClick={() => setTelaAtual("treino_bradi")}>
+            🎮 Modo Treino (Simulação)
+            <span style={{fontSize: "12px", opacity: 0.8}}>(Paciente Virtual)</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. TELA: FLUXO BRADICARDIA (O código antigo)
+  if (telaAtual === "fluxo_bradi") {
+    // @ts-ignore
+    const dados = protocoloBradicardia[passoFluxo];
+    
+    // Cores específicas para o fluxo
+    const corTopo = {
+      neutro: "#3b82f6", sucesso: "#10b981", alerta: "#f59e0b", perigo: "#ef4444", azul: "#0ea5e9"
+    // @ts-ignore
+    }[dados.tipo] || "#3b82f6";
+
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={{backgroundColor: corTopo, padding: "15px", margin: "-20px -20px 20px -20px", color: "white"}}>
+            <h3 style={{margin: 0}}>{dados.titulo}</h3>
+          </div>
+          
+          <div style={{textAlign: "left", marginBottom: "20px"}}>
+            <ol style={{paddingLeft: "20px", lineHeight: "1.5"}}>
+              {/* @ts-ignore */}
+              {dados.instrucoes.map((t, i) => <li key={i} style={{marginBottom: "8px"}}>{t}</li>)}
+            </ol>
+          </div>
+
+          <div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
+            {/* @ts-ignore */}
+            {dados.opcoes.map((op, i) => (
+              <button 
+                key={i} 
+                onClick={() => setPassoFluxo(op.proximoId)}
+                style={{...styles.btnMenu, backgroundColor: op.tema === "vermelho" ? "#dc2626" : op.tema === "verde" ? "#059669" : "#2563eb", padding: "12px"}}
+              >
+                {op.texto}
+              </button>
+            ))}
+          </div>
+
+          <button onClick={irParaMenu} style={{marginTop: "20px", background: "none", border: "none", textDecoration: "underline", color: "#666", cursor: "pointer"}}>
+            Sair do Protocolo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. TELA: SIMULAÇÃO / TREINO (NOVO!)
+  if (telaAtual === "treino_bradi") {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <h2 style={{...styles.titulo, fontSize: "18px"}}>Caso Clínico: Sr. João</h2>
+          <p style={{fontSize: "14px", fontStyle: "italic", marginBottom: "15px"}}>{cenarioInicial.historia}</p>
+
+          {/* O MONITOR VIRTUAL */}
+          <div style={styles.monitor}>
+            <div style={{display: "flex", justifyContent: "space-between"}}>
+              <div>
+                <span style={styles.labelVital}>FC (bpm)</span>
+                <span style={{...styles.valVital, color: sinaisVitais.fc < 50 ? "#ff4444" : "#0f0"}}>{sinaisVitais.fc}</span>
+              </div>
+              <div>
+                <span style={styles.labelVital}>PA (mmHg)</span>
+                <span style={{...styles.valVital, color: parseInt(sinaisVitais.pa) < 90 ? "#ff4444" : "#0f0"}}>{sinaisVitais.pa}</span>
+              </div>
+              <div>
+                <span style={styles.labelVital}>SatO2</span>
+                <span style={styles.valVital}>{sinaisVitais.sat}%</span>
+              </div>
+            </div>
+            <div style={{marginTop: "10px", borderTop: "1px solid #333", paddingTop: "5px"}}>
+              <span style={styles.labelVital}>Consciência: </span>
+              <span style={{color: "white"}}>{sinaisVitais.consciencia}</span>
+            </div>
+          </div>
+
+          <div style={styles.feedbackBox}>
+            <strong>Status:</strong> {feedbackSimulacao}
+          </div>
+
+          {/* CONTROLES DO JOGO */}
+          {etapaSimulacao === "inicio" && (
+            <div style={{display: "grid", gap: "10px"}}>
+              <button style={{...styles.btnMenu, backgroundColor: "#eab308"}} onClick={() => acaoSimulacao("atropina")}>
+                💉 Administrar Atropina
+              </button>
+              <button style={{...styles.btnMenu, backgroundColor: "#ef4444"}} onClick={() => acaoSimulacao("marcapasso")}>
+                ⚡ Marcapasso Transcutâneo
+              </button>
+              <button style={{...styles.btnMenu, backgroundColor: "#6b7280"}} onClick={() => acaoSimulacao("observar")}>
+                👁️ Apenas Observar
+              </button>
+            </div>
+          )}
+
+          {etapaSimulacao === "falha_atropina" && (
+            <div style={{display: "grid", gap: "10px"}}>
+              <button style={{...styles.btnMenu, backgroundColor: "#ef4444"}} onClick={() => acaoSimulacao("marcapasso")}>
+                ⚡ Instalar Marcapasso Agora
+              </button>
+            </div>
+          )}
+
+          {(etapaSimulacao === "sucesso" || etapaSimulacao === "piora") && (
+            <button style={{...styles.btnMenu, backgroundColor: "#3b82f6"}} onClick={resetSimulacao}>
+              🔄 Reiniciar Caso
+            </button>
+          )}
+
+          <button onClick={irParaMenu} style={{marginTop: "20px", background: "none", border: "none", textDecoration: "underline", color: "#666", cursor: "pointer"}}>
+            Voltar ao Menu
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
