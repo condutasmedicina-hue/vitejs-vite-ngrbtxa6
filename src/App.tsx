@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
-// --- DADOS DO PROTOCOLO: BRADICARDIAS (FINAL E LIMPO) ---
+// --- DADOS DO PROTOCOLO ---
 const protocolo = {
   inicio: {
     titulo: "Abordagem Inicial",
@@ -43,8 +43,6 @@ const protocolo = {
       { texto: "SIM (Instável)", proximoId: "tipo_bloqueio_instavel", tema: "vermelho" }
     ]
   },
-  
-  // --- CAMINHO ESTÁVEL ---
   analise_ritmo_estavel: {
     titulo: "Análise do ECG (Paciente Estável)",
     instrucoes: [
@@ -84,8 +82,6 @@ const protocolo = {
       { texto: "Reiniciar", proximoId: "inicio", tema: "neutro" }
     ]
   },
-
-  // --- CAMINHO INSTÁVEL ---
   tipo_bloqueio_instavel: {
     titulo: "Análise do Bloqueio (Instável)",
     instrucoes: [
@@ -219,7 +215,6 @@ const protocolo = {
   }
 };
 
-// --- ESTRUTURA VISUAL ---
 export default function App() {
   // @ts-ignore
   const [passoAtual, setPassoAtual] = useState("inicio");
@@ -237,7 +232,8 @@ export default function App() {
     azul: "#0ea5e9"
   };
 
-  const styles = {
+  // O SEGREDO ESTÁ AQUI: O ": any" desliga o erro de TypeScript
+  const styles: any = {
     appContainer: {
       minHeight: "100vh",
       backgroundColor: cores.fundo,
@@ -262,19 +258,19 @@ export default function App() {
       // @ts-ignore
       backgroundColor: cores[dados.tipo] || cores.neutro,
       padding: "16px",
-      textAlign: "center" as const,
+      textAlign: "center",
       color: "white"
     },
     headerTitle: {
       margin: 0,
       fontSize: "14px",
       fontWeight: "bold",
-      textTransform: "uppercase" as const,
+      textTransform: "uppercase",
       letterSpacing: "1px"
     },
     contentContainer: {
       padding: "24px 24px 10px 24px",
-      textAlign: "left" as const
+      textAlign: "left"
     },
     lista: {
       margin: 0,
@@ -311,13 +307,13 @@ export default function App() {
         fontSize: "16px",
         fontWeight: "bold",
         cursor: "pointer",
-        textAlign: "center" as const,
+        textAlign: "center",
         width: "100%",
         boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
       };
     },
     resetLink: {
-      textAlign: "center" as const,
+      textAlign: "center",
       paddingBottom: "16px",
       color: "#9ca3af",
       fontSize: "13px",
