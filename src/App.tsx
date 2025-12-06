@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 // ==========================================
 // 1. DADOS DOS PROTOCOLOS (FLUXOGRAMAS)
@@ -232,11 +232,7 @@ const cenarioInicial = {
 // 3. COMPONENTE PRINCIPAL (APP)
 // ==========================================
 export default function App() {
-  // Estado para controlar em qual tela o usuário está
-  // telas: 'menu', 'selecao_bradi', 'fluxo_bradi', 'treino_bradi'
   const [telaAtual, setTelaAtual] = useState("menu");
-  
-  // Estado para o fluxo guiado
   const [passoFluxo, setPassoFluxo] = useState("inicio");
   
   // Estados para o simulador
@@ -282,7 +278,7 @@ export default function App() {
     }
   };
 
-  // --- ESTILOS GERAIS ---
+  // --- ESTILOS GERAIS (com :any para evitar erros) ---
   const styles: any = {
     container: {
       minHeight: "100vh",
@@ -291,7 +287,8 @@ export default function App() {
       padding: "20px",
       display: "flex",
       justifyContent: "center",
-      alignItems: "center"
+      alignItems: "center",
+      boxSizing: "border-box"
     },
     card: {
       backgroundColor: "white",
@@ -375,16 +372,17 @@ export default function App() {
     // @ts-ignore
     const dados = protocoloBradicardia[passoFluxo];
     
-    // Cores específicas para o fluxo
-    const corTopo = {
+    // CORREÇÃO AQUI: Definimos o objeto como "any" para não dar erro
+    const corTopo: any = {
       neutro: "#3b82f6", sucesso: "#10b981", alerta: "#f59e0b", perigo: "#ef4444", azul: "#0ea5e9"
+    };
     // @ts-ignore
-    }[dados.tipo] || "#3b82f6";
+    const corFundo = corTopo[dados.tipo] || "#3b82f6";
 
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <div style={{backgroundColor: corTopo, padding: "15px", margin: "-20px -20px 20px -20px", color: "white"}}>
+          <div style={{backgroundColor: corFundo, padding: "15px", margin: "-20px -20px 20px -20px", color: "white"}}>
             <h3 style={{margin: 0}}>{dados.titulo}</h3>
           </div>
           
