@@ -220,7 +220,6 @@ export default function App() {
     
   // Estados para o simulador
   const [sinaisVitais, setSinaisVitais] = useState(cenarioInicial.sinais);
-  // CORREÇÃO AQUI: TIPO ALTERADO PARA React.ReactNode PARA EVITAR ERRO DE TS
   const [feedbackSimulacao, setFeedbackSimulacao] = useState<React.ReactNode>(cenarioInicial.feedback);
   const [etapaSimulacao, setEtapaSimulacao] = useState("apresentacao_caso");
   const [comandoUsuario, setComandoUsuario] = useState("");
@@ -954,16 +953,6 @@ export default function App() {
           {!isApresentacao && (
             <div style={{animation: "fadeIn 0.5s", opacity: msgErroAtual ? 0.3 : 1, pointerEvents: msgErroAtual ? "none" : "auto"}}>
               
-              {/* VIDEO - AGORA TAMBÉM RODA NA SIMULAÇÃO */}
-              <div style={{ marginBottom: "20px", textAlign: "center" }}>
-                <video
-                  autoPlay loop muted playsInline width="100%"
-                  style={{ borderRadius: "10px", maxHeight: "200px", maxWidth: "300px", objectFit: "cover", backgroundColor: "#000", pointerEvents: "none", margin: "0 auto", display: "block" }}
-                >
-                  <source src="https://i.imgur.com/8o2hBrl.mp4" type="video/mp4" />
-                </video>
-              </div>
-
               {/* MONITOR */}
               {monitorVisivel && (
                 <div style={styles.monitor}>
