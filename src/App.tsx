@@ -1,9 +1,18 @@
-import { useState } from "react";
+import React, { useState } from "react";
+
+// ==========================================
+// 0. CONFIGURAÇÃO DE TIPOS (PARA TYPESCRIPT)
+// ==========================================
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 // ==========================================
 // 1. DADOS DOS PROTOCOLOS (FLUXOGRAMAS)
 // ==========================================
-
 const protocoloBradicardia = {
   inicio: {
     titulo: "Abordagem Inicial (Bradicardia)",
@@ -15,7 +24,7 @@ const protocoloBradicardia = {
     ],
     tipo: "neutro",
     opcoes: [
-      { texto: "Próximo Passo", proximoId: "causas_reversivel", tema: "azul" }
+      { texto: "Próximo Passo", proximoId: "causas_reversiveis", tema: "azul" }
     ]
   },
   causas_reversiveis: {
@@ -102,7 +111,6 @@ const protocoloBradicardia = {
   atropina: {
     titulo: "Tentativa Farmacológica",
     instrucoes: [
-      // 🚨 CORREÇÃO DA LINHA 114: Removido o JSX, adicionado o separador '|||'
       "Administre Atropina IV:|||(1 mg em Bolus)", 
       "Repita a cada 3-5 min se necessário.",
       "Dose máxima total: 3 mg."
@@ -143,9 +151,7 @@ const protocoloBradicardia = {
   drogas_info: {
     titulo: "Infusão Contínua",
     instrucoes: [
-      // 🚨 CORREÇÃO: Removido o JSX, adicionado o separador '|||'
       "Dopamina EV:|||(5 a 20 mcg/kg/min)",
-      // 🚨 CORREÇÃO: Removido o JSX, adicionado o separador '|||'
       "OU Epinefrina EV:|||(2 a 10 mcg/min)",
       "Titule até resposta da FC ou PA."
     ],
@@ -159,7 +165,6 @@ const protocoloBradicardia = {
     instrucoes: [
       "Coloque as pás (Antero-Posterior preferencial).",
       "Sedação/Analgesia (IMPORTANTE: Fentanil/Mida).",
-      // 🚨 CORREÇÃO: Removido o JSX, adicionado o separador '|||'
       "Ajuste a Frequência:|||(70 a 80 bpm)",
       "Selecione o Modo: FIXO (ou Demand).",
       "Aumente a Corrente (mA) até capturar."
@@ -174,7 +179,7 @@ const protocoloBradicardia = {
     instrucoes: [
       "Não confie apenas no monitor.",
       "Palpe o PULSO FEMORAL (lado oposto ao acesso).",
-      "O pulso deve corresponder à frequência do MP."
+      "O pulso deve corresponder à frequência do Marcapasso."
     ],
     tipo: "alerta",
     opcoes: [
@@ -186,7 +191,6 @@ const protocoloBradicardia = {
     titulo: "Margem de Segurança",
     instrucoes: [
       "Identifique o limiar onde capturou (ex: 40mA).",
-      // 🚨 CORREÇÃO: Removido o JSX, adicionado o separador '|||'
       "Aumente 10% de segurança:|||(Ex: Se capturou com 50mA, deixe em 55mA)",
       "Mantenha sedação contínua.",
       "Solicite Marcapasso Transvenoso (Definitivo)."
@@ -216,10 +220,14 @@ export default function App() {
     
   // Estados para o simulador
   const [sinaisVitais, setSinaisVitais] = useState(cenarioInicial.sinais);
-  const [feedbackSimulacao, setFeedbackSimulacao] = useState<string | JSX.Element>(cenarioInicial.feedback);
+  // CORREÇÃO AQUI: TIPO ALTERADO PARA React.ReactNode PARA EVITAR ERRO DE TS
+  const [feedbackSimulacao, setFeedbackSimulacao] = useState<React.ReactNode>(cenarioInicial.feedback);
   const [etapaSimulacao, setEtapaSimulacao] = useState("apresentacao_caso");
   const [comandoUsuario, setComandoUsuario] = useState("");
   const [monitorVisivel, setMonitorVisivel] = useState(false);
+  
+  // ESTADOS DO RECONHECIMENTO DE VOZ
+  const [isRecording, setIsRecording] = useState(false);
   
   // NOVOS ESTADOS PARA O ECG
   const [mostrarECG, setMostrarECG] = useState(false);
@@ -229,14 +237,18 @@ export default function App() {
   const [esperandoDose, setEsperandoDose] = useState<string | null>(null);
   const [atropinaCount, setAtropinaCount] = useState(0);
 
+  // NOVO: Esperar tipo do Marcapasso
+  const [esperandoTipoMp, setEsperandoTipoMp] = useState(false);
+
   // Checklist rigoroso
   const [checklist, setChecklist] = useState({
     movFeito: false,
     paAferida: false,
     satAferida: false,
-    estabilidadeChecada: false,
+    estabilidadeChecada: false, // Só vira true se o ALUNO falar "Instável"
     ecgFeito: false,
     atropinaFeita: false,
+    tipoMpDefinido: false,
     pasColocadas: false,
     sedacaoFeita: false,
     mpLigado: false,
@@ -266,6 +278,7 @@ export default function App() {
     setTentativasECG(0);
     setEsperandoDose(null);
     setAtropinaCount(0);
+    setEsperandoTipoMp(false);
     setMsgErroAtual(null);
     setMostrarDica(false);
     setChecklist({
@@ -275,6 +288,7 @@ export default function App() {
       estabilidadeChecada: false,
       ecgFeito: false,
       atropinaFeita: false,
+      tipoMpDefinido: false,
       pasColocadas: false,
       sedacaoFeita: false,
       mpLigado: false,
@@ -299,6 +313,43 @@ export default function App() {
       setMostrarDica(false);
   };
 
+  // =========================================================
+  // FUNÇÃO DE GRAVAÇÃO DE VOZ (SPEECH TO TEXT)
+  // =========================================================
+  const iniciarGravacao = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Seu navegador não suporta reconhecimento de voz. Tente usar o Google Chrome.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsRecording(true);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Erro no reconhecimento de voz:", event.error);
+      setIsRecording(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setComandoUsuario(transcript.replace(/\.$/, "")); 
+    };
+
+    recognition.start();
+  };
+
   // --- LÓGICA DO "CÉREBRO" (RIGOROSO COM O FLUXOGRAMA) ---
   const enviarComando = (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,40 +359,56 @@ export default function App() {
     const cmd = comandoUsuario.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     // ===============================================
-    // LÓGICA DE DIAGNÓSTICO DO ECG (PRIORIDADE MÁXIMA SE ESTIVER ESPERANDO)
+    // LÓGICA DE DIAGNÓSTICO DO ECG
     // ===============================================
     if (esperandoDiagnosticoECG) {
-        // Verifica se acertou: "Bradicardia Sinusal" (ou variações)
         if (cmd.includes("sinusal") && (cmd.includes("bradi") || cmd.includes("lento"))) {
             setFeedbackSimulacao("✅ EXCELENTE! Diagnóstico correto: Bradicardia Sinusal.\n\nO ritmo é regular, tem onda P antes de todo QRS, mas a frequência está baixa (<50 bpm).\n\nQual o próximo passo, doutor?");
             setEsperandoDiagnosticoECG(false);
             setMostrarECG(false);
         } else {
-            // LÓGICA DE MENSAGENS ROTATIVAS
             const mensagensErro = [
                 "🤔 Diagnóstico incorreto, doutor. Observe com calma: Existe onda P antes de cada QRS?",
-                "⚠️ Ainda não. Note que o ritmo é regular e a frequência está baixa (<50bpm). Tente outro diagnóstico.",
-                "❌ Não é esse. Lembre-se: O impulso nasce no nó sinusal, mas está lento. Tente novamente.",
-                "👀 Olhe o DII longo. Onda P positiva, seguida de QRS estreito... Qual o nome desse ritmo?"
+                "⚠️ Tente outro diagnóstico.",
+                "❌ O impulso nasce no nó sinusal, mas está lento.",
+                "👀 Olhe o DII longo. Onda P positiva, seguida de QRS estreito... Qual o nome?"
             ];
-            
-            // Pega a mensagem baseada no contador
             const msgAtual = mensagensErro[tentativasECG % mensagensErro.length];
-            
             setFeedbackSimulacao(msgAtual);
             setTentativasECG(prev => prev + 1);
         }
         setComandoUsuario("");
         return;
     }
+
+    // ===============================================
+    // LÓGICA: QUAL O TIPO DE MARCAPASSO?
+    // ===============================================
+    if (esperandoTipoMp) {
+        if (cmd.includes("transcutaneo") || cmd.includes("externo")) {
+            setChecklist(prev => ({...prev, tipoMpDefinido: true}));
+            setFeedbackSimulacao("Equipe: \"Certo. Marcapasso Transcutâneo selecionado. Pode guiar a sequência (Pás, Sedação...)\"");
+            setEsperandoTipoMp(false);
+        } else if (cmd.includes("transvenoso")) {
+            setFeedbackSimulacao("Equipe: \"Doutor, o acesso Transvenoso vai demorar para ser pego. A paciente está instável. Qual a opção mais rápida?\"");
+        } else {
+            setFeedbackSimulacao("Equipe: \"Por favor doutor, precisamos saber o tipo. Transvenoso ou Transcutâneo?\"");
+        }
+        setComandoUsuario("");
+        return;
+    }
     
     // ===============================================
-    // LÓGICA DE DOSES (QUANDO ESPERA UMA RESPOSTA)
+    // LÓGICA DE DOSES (ATROPINA)
     // ===============================================
     if (esperandoDose === "atropina") {
-      if (cmd.includes("1mg") || cmd.includes("1 mg")) {
-        
-        // INCREMENTA O CONTADOR DE DOSES
+      // 🚨 ATUALIZAÇÃO AQUI: ACEITA "1 mg" OU "1 miligrama" E VARIAÇÕES
+      if (
+          cmd.includes("1mg") || 
+          cmd.includes("1 mg") || 
+          cmd.includes("1 miligrama") || 
+          cmd.includes("um miligrama")
+      ) {
         const novaContagem = atropinaCount + 1;
         setAtropinaCount(novaContagem);
 
@@ -365,47 +432,25 @@ export default function App() {
     // ===============================================
     // LÓGICA PRIORITÁRIA: PERGUNTAS / ANAMNESE
     // ===============================================
-
-    // 1. Queixa Principal / Como se sente (Paciente fala)
     if (
-      cmd.includes("sentindo") ||
-      cmd.includes("sente") ||
-      cmd.includes("ajudar") ||
-      cmd.includes("queixa") ||
-      cmd.includes("fale") ||
-      cmd.includes("conte") ||
-      (cmd.includes("o que") && cmd.includes("tem")) ||
-      (cmd.includes("como") && (cmd.includes("voce") || cmd.includes("vc") || cmd.includes("senhora") || cmd.includes("esta")))
+      cmd.includes("sentindo") || cmd.includes("sente") || cmd.includes("ajudar") ||
+      cmd.includes("queixa") || cmd.includes("fale") || cmd.includes("conte") ||
+      (cmd.includes("o que") && cmd.includes("tem"))
     ) {
       setFeedbackSimulacao("Dona Creusa (com voz pastosa): \"Ai doutor... uma fraqueza que não passa... parece que a luz tá apagando... minha cabeça tá rodando...\"");
       setComandoUsuario("");
       return;
     }
-
-    // 2. História do Evento / Tempo (Acompanhante fala)
-    else if (
-      cmd.includes("aconteceu") ||
-      cmd.includes("houve") ||
-      cmd.includes("tempo") ||
-      cmd.includes("quando") ||
-      cmd.includes("comecou") ||
-      cmd.includes("inicio") ||
-      cmd.includes("horas") ||
-      (cmd.includes("como") && cmd.includes("foi"))
-    ) {
+    else if (cmd.includes("aconteceu") || cmd.includes("houve") || cmd.includes("tempo") || cmd.includes("quando")) {
       setFeedbackSimulacao("Acompanhante: \"Há mais ou menos 2 horas, doutor. Ela estava sentada vendo TV, levantou rápido e ficou pálida desse jeito, quase desmaiou.\"");
       setComandoUsuario("");
       return;
     }
-
-    // 3. Medicamentos / Alergias
     else if (cmd.includes("remedio") || cmd.includes("medicamento") || cmd.includes("toma") || cmd.includes("alergia")) {
       setFeedbackSimulacao("Acompanhante: \"Ela toma remédio pra pressão e pro coração, mas não sei o nome. Que eu saiba, não tem alergia a nada.\"");
       setComandoUsuario("");
       return;
     }
-
-    // 4. Antecedentes
     else if (cmd.includes("historia") || cmd.includes("anamnese") || cmd.includes("antecedentes")) {
       setFeedbackSimulacao("Acompanhante: \"Ela é hipertensa e tem problema cardíaco antigo. Nunca desmaiou assim antes.\"");
       setComandoUsuario("");
@@ -413,179 +458,142 @@ export default function App() {
     }
 
     // ===============================================
-    // 5. RECONHECIMENTO DE INSTABILIDADE (DIAGNÓSTICO)
+    // 5. RECONHECIMENTO DE INSTABILIDADE (CHECKLIST OBRIGATÓRIO)
     // ===============================================
 
-    // CASO A: ALUNO FALA "INSTÁVEL" + "MARCAPASSO"
-    else if ((cmd.includes("instavel") || cmd.includes("instabilidade")) && (cmd.includes("marcapasso") || cmd.includes("mp"))) {
-      setChecklist(prev => ({...prev, estabilidadeChecada: true}));
-      
-      setFeedbackSimulacao(
-        <div>
-          <p style={{margin: "0 0 10px 0"}}><strong>✅ EXCELENTE!</strong> Paciente <strong style={{color: "#dc2626"}}>INSTÁVEL</strong>.</p>
-          <p style={{margin: "0 0 5px 0"}}>Lembre-se sempre dos <strong>4 D's da Instabilidade</strong>:</p>
-          <ul style={{margin: "0 0 15px 0", paddingLeft: "20px"}}>
-            <li>Dor torácica (Angina)</li>
-            <li>Dispneia (Congestão)</li>
-            <li>Diminuição da Consciência</li>
-            <li>Diminuição da PA (Hipotensão)</li>
-          </ul>
-          <p style={{margin: 0}}>Você indicou corretamente o Marcapasso. Como deseja montá-lo e qual o tipo agora?</p>
-        </div>
-      );
-      
-      setComandoUsuario("");
-      return;
-    }
-
-    // CASO B: ALUNO FALA SÓ "INSTÁVEL"
+    // O ALUNO DEVE FALAR "INSTÁVEL" PARA DESBLOQUEAR
     else if (cmd.includes("instavel") || cmd.includes("instabilidade")) {
       setChecklist(prev => ({...prev, estabilidadeChecada: true}));
-      
       setFeedbackSimulacao(
         <div>
-          <p style={{margin: "0 0 10px 0"}}><strong>✅ CORRETO, DOUTOR(A)!</strong> A paciente está <strong style={{color: "#dc2626"}}>INSTÁVEL</strong>.</p>
+          <p style={{margin: "0 0 10px 0", color: "#059669", fontWeight: "bold"}}>✅ PARABÉNS! AVALIAÇÃO CORRETA.</p>
+          <p style={{margin: "0 0 10px 0"}}>Você identificou corretamente a <strong>Instabilidade Hemodinâmica</strong>.</p>
           <p style={{margin: "0 0 5px 0"}}>Lembre-se sempre dos <strong>4 D's da Instabilidade</strong>:</p>
-          <ul style={{margin: "0 0 15px 0", paddingLeft: "20px"}}>
-            <li>Dor torácica (Angina)</li>
-            <li>Dispneia (Congestão)</li>
-            <li>Diminuição da Consciência</li>
-            <li>Diminuição da PA (Hipotensão)</li>
+          <ul style={{margin: "0 0 10px 0", paddingLeft: "20px", textAlign: "left"}}>
+            <li><strong>D</strong>or Torácica (Angina)</li>
+            <li><strong>D</strong>ispneia (Congestão Pulmonar)</li>
+            <li><strong>D</strong>iminuição da Consciência</li>
+            <li><strong>D</strong>iminuição da PA (Hipotensão/Choque)</li>
           </ul>
-          <p style={{margin: 0}}>O que você deseja fazer agora?</p>
         </div>
       );
-      
       setComandoUsuario("");
       return;
+    }
+    
+    // SE O ALUNO DISSER QUE ESTÁ ESTÁVEL (ERRO PROPOSITAL)
+    else if (cmd.includes("estavel") && !cmd.includes("instavel")) {
+        acionarCondutaErrada("Cuidado doutor. Avalie novamente. PA 80/40 e Sonolência são sinais de estabilidade?");
+        return;
     }
 
     // ===============================================
-    // 6. AVALIAÇÃO ESPECÍFICA DOS 4 D's (SINTOMAS)
+    // 6. AVALIAÇÃO DOS 4 D's
     // ===============================================
-
-    // A. DOR TORÁCICA / PEITO / ANGINA
-    else if (cmd.includes("dor") || cmd.includes("peito") || cmd.includes("angina") || cmd.includes("toracica")) {
-      setFeedbackSimulacao("Dona Creusa: \"Não, doutor. Não sinto dor no peito, só o coração batendo devagar e essa moleza.\" (Dor Anginosa: AUSENTE)");
+    else if (cmd.includes("dor") || cmd.includes("peito") || cmd.includes("angina")) {
+      setFeedbackSimulacao("Dona Creusa: \"Não, doutor. Não sinto dor no peito.\" (Dor Anginosa: AUSENTE)");
       setComandoUsuario("");
       return;
     }
-
-    // B. DISPNEIA / FALTA DE AR / PULMÃO
-    else if (cmd.includes("falta") && cmd.includes("ar") || cmd.includes("respirar") || cmd.includes("dispneia") || cmd.includes("cansaco") || cmd.includes("pulmao")) {
-      setFeedbackSimulacao("Dona Creusa: \"O ar entra normal, não sinto falta de ar não.\" (Dispneia/Congestão: AUSENTE)");
+    else if (cmd.includes("falta") && cmd.includes("ar") || cmd.includes("dispneia")) {
+      setFeedbackSimulacao("Dona Creusa: \"O ar entra normal, não sinto falta de ar não.\" (Dispneia: AUSENTE)");
       setComandoUsuario("");
       return;
     }
-
-    // C. CONSCIÊNCIA / DESMAIO / SONOLÊNCIA
-    else if (cmd.includes("consciencia") || cmd.includes("desmaio") || cmd.includes("sonolencia") || cmd.includes("tontura") || cmd.includes("apagando") || cmd.includes("mental")) {
-      setFeedbackSimulacao("Acompanhante: \"Ela está muito sonolenta, doutor. Quase desmaiou agorinha!\" (Diminuição da Consciência: PRESENTE)");
+    else if (cmd.includes("consciencia") || cmd.includes("desmaio") || cmd.includes("sonolencia")) {
+      setFeedbackSimulacao("Acompanhante: \"Ela está muito sonolenta, doutor!\" (Diminuição da Consciência: PRESENTE)");
       setComandoUsuario("");
       return;
     }
-
-    // D. HIPOTENSÃO / DIMINUIÇÃO DA PA
+    // SE PERGUNTAR ESPECIFICAMENTE DA HIPOTENSÃO
     else if (cmd.includes("hipotensao") || (cmd.includes("diminuicao") && cmd.includes("pa"))) {
-      setChecklist(prev => ({...prev, paAferida: true}));
-      setFeedbackSimulacao("Equipe: \"Sim, doutor. A PA está 80/40 mmHg. Isso configura Hipotensão.\" (Instabilidade Hemodinâmica: PRESENTE)");
+      setFeedbackSimulacao("Equipe: \"A PA está 80/40 mmHg. Isso configura Hipotensão, doutor? (Aguardando sua classificação)\"");
       setComandoUsuario("");
       return;
     }
 
     // ===============================================
-    // 7. PROCEDIMENTOS CLÍNICOS (ALÇA FECHADA)
+    // 7. PROCEDIMENTOS CLÍNICOS
     // ===============================================
 
-    // MONITOR / MOV (Obrigatório primeiro passo clínico)
-    else if (cmd.includes("monitor") || cmd.includes("mov") || cmd.includes("oxigenio") || cmd.includes("veia") || cmd.includes("monitorizacao")) {
-      
+    // MONITOR / MOV
+    else if (cmd.includes("monitor") || cmd.includes("mov") || cmd.includes("oxigenio") || cmd.includes("veia")) {
       let respostaEquipe = "Equipe: \"Compreendido.\"";
-      
-      // REGRA: SÓ LIGA O QUADRADO PRETO SE PEDIR MONITOR
-      if (cmd.includes("monitor") || cmd.includes("monitorizacao") || cmd.includes("mov")) {
+      if (cmd.includes("monitor") || cmd.includes("mov")) {
           setMonitorVisivel(true);
           respostaEquipe = "Equipe: \"Monitor conectado. O2 instalado e acesso garantido.\"";
       } else {
-        // Se pediu só acesso ou O2, confirma mas NÃO liga o monitor
         respostaEquipe = "Equipe: \"Acesso e O2 instalados. Aguardando monitorização.\"";
       }
-      
       setChecklist(prev => ({...prev, movFeito: true}));
       setFeedbackSimulacao(respostaEquipe);
     }
 
-    // ECG (Precisa de MOV antes)
+    // ECG
     else if (cmd.includes("ecg") || cmd.includes("eletro")) {
       if (!checklist.movFeito) {
-        acionarCondutaErrada("Você solicitou ECG antes de monitorizar o paciente e garantir acesso/O2 (MOV). Siga a ordem: MOV primeiro.");
+        acionarCondutaErrada("Você solicitou ECG antes de monitorizar o paciente (MOV).");
         return;
       }
       setChecklist(prev => ({...prev, ecgFeito: true}));
-      // ATIVA O MODO DE DIAGNÓSTICO DE ECG
       setMostrarECG(true);
       setEsperandoDiagnosticoECG(true);
-      setFeedbackSimulacao("Equipe: \"Rodando ECG de 12 derivações... Pronto, doutor. Está na tela. Qual o seu laudo?\"");
+      setFeedbackSimulacao("Equipe: \"Rodando ECG... Pronto. Qual o seu laudo?\"");
     }
 
-    // ESTABILIDADE GERAL / PA / SATURAÇÃO (Comandos gerais)
-    else if (cmd.includes("pa") || cmd.includes("pressao") || cmd.includes("estabilidade") || cmd.includes("sinais") || cmd.includes("4d") || cmd.includes("saturacao") || cmd.includes("oximetria") || cmd.includes("sat")) {
+    // PA / SINAIS (ALTERADO: NÃO CLASSIFICA MAIS AUTOMATICAMENTE)
+    else if (cmd.includes("pa") || cmd.includes("pressao") || cmd.includes("estabilidade") || cmd.includes("sinais") || cmd.includes("sinais vitais")) {
       
       if (!checklist.movFeito) {
         acionarCondutaErrada("Você tentou avaliar sinais vitais sem monitorizar o paciente (MOV) antes.");
         return;
       }
-
-      setChecklist(prev => ({...prev, estabilidadeChecada: true}));
       
-      // LOGICA DE EXIBIÇÃO ESPECÍFICA
-      let msg = "Equipe: \"Aferindo... ";
-
-      // Se pediu PA (ou Pressão)
-      if (cmd.includes("pa") || cmd.includes("pressao") || cmd.includes("sinais") || cmd.includes("estabilidade")) {
-          setChecklist(prev => ({...prev, paAferida: true}));
-          msg += "PA 80/40 mmHg. ";
-      }
-
-      // Se pediu Sat
-      if (cmd.includes("sat") || cmd.includes("oximetria") || cmd.includes("sinais") || cmd.includes("estabilidade")) {
-          setChecklist(prev => ({...prev, satAferida: true}));
-          msg += "Saturação 94%. ";
-      }
-
-      // Complemento da estabilidade
-      msg += "Paciente sonolenta e fria.\"";
-
-      setFeedbackSimulacao(msg);
+      // APENAS MOSTRA OS DADOS - NÃO CLASSIFICA
+      setChecklist(prev => ({...prev, paAferida: true, satAferida: true}));
+      setFeedbackSimulacao("Equipe: \"Doutor(a), aqui estão os dados: PA 80/40 mmHg, FC 36 bpm, SatO2 94% em ar ambiente. Extremidades frias.\"");
     }
 
-    // ATROPINA (Precisa de MOV + Estabilidade checada)
+    // ATROPINA (REGRA: SÓ APÓS CHECAR INSTABILIDADE)
     else if (cmd.includes("atropina")) {
       if (!checklist.movFeito) {
         acionarCondutaErrada("Você tentou medicar sem realizar o MOV antes.");
         return;
       }
+      // BLOQUEIO SE NÃO FALOU QUE É INSTÁVEL
       if (!checklist.estabilidadeChecada) {
-        acionarCondutaErrada("Você decidiu medicar sem antes checar explicitamente os sinais de instabilidade (4Ds / PA).");
+        acionarCondutaErrada("A equipe precisa saber: O paciente está ESTÁVEL ou INSTÁVEL? (Classifique a instabilidade verbalmente antes de medicar).");
         return;
       }
 
-      // VERIFICA SE JÁ ATINGIU A DOSE MÁXIMA (3 DOSES)
       if (atropinaCount >= 3) {
-        acionarCondutaErrada("Dose máxima de Atropina (3mg) já atingida. A droga falhou. Não insista. Passe para a 2ª linha (Marcapasso ou Dopamina/Epinefrina).");
+        acionarCondutaErrada("Dose máxima de Atropina atingida.");
         return;
       }
 
-      setFeedbackSimulacao("Equipe: \"Certo, Atropina. Qual a dose o senhor deseja administrar?\"");
+      setFeedbackSimulacao("Equipe: \"Certo, Atropina. Qual a dose?\"");
       setEsperandoDose("atropina");
     }
 
-    // MARCAPASSO (SEQUÊNCIA RIGOROSA)
+    // MARCAPASSO (REGRA: SÓ APÓS CHECAR INSTABILIDADE)
     else if (cmd.includes("marcapasso") || cmd.includes("mp") || cmd.includes("pas") || cmd.includes("sedacao") || cmd.includes("ligar")) {
       
-      // REGRA: Tentou MP direto sem Atropina
+      // BLOQUEIO SE NÃO FALOU QUE É INSTÁVEL
+      if (!checklist.estabilidadeChecada) {
+          acionarCondutaErrada("A equipe precisa saber: O paciente está ESTÁVEL ou INSTÁVEL? (Classifique a instabilidade verbalmente antes de indicar Marcapasso).");
+          return;
+      }
+      
       if (!checklist.atropinaFeita && !cmd.includes("bavt")) {
-          acionarCondutaErrada("O protocolo indica tentativa de Atropina antes do MP (exceto em BAVT imediato). Você pulou a Atropina.");
+          acionarCondutaErrada("O protocolo indica tentativa de Atropina antes do Marcapasso (exceto em BAVT imediato).");
+          return;
+      }
+
+      // NOVO: PERGUNTA O TIPO SE AINDA NÃO DEFINIU
+      if ((cmd.includes("marcapasso") || cmd.includes("mp")) && !checklist.tipoMpDefinido && !cmd.includes("transcutaneo")) {
+          setEsperandoTipoMp(true);
+          setFeedbackSimulacao("Equipe: \"Entendido, indicação de Marcapasso. Qual o tipo de Marcapasso vamos usar?\"");
+          setComandoUsuario("");
           return;
       }
 
@@ -593,91 +601,91 @@ export default function App() {
       
       // A. PÁS
       if (cmd.includes("pas") || cmd.includes("conectar")) {
+          if (!checklist.tipoMpDefinido) { setEsperandoTipoMp(true); setFeedbackSimulacao("Qual o tipo de marcapasso?"); return; }
+
           setChecklist(prev => ({...prev, pasColocadas: true}));
-          setFeedbackSimulacao("Equipe: \"Pás conectadas no tórax. MP em Stand-by.\"");
+          setFeedbackSimulacao("Equipe: \"Pás conectadas. Marcapasso Transcutâneo em Stand-by.\"");
           setComandoUsuario("");
           return;
       }
 
-      // B. SEDAÇÃO (Obrigatório ter pás e ser antes de ligar)
-      if (cmd.includes("sedacao") || cmd.includes("analgesia") || cmd.includes("fentanil")) {
+      // B. SEDAÇÃO
+      if (cmd.includes("sedacao") || cmd.includes("analgesia")) {
           if (!checklist.pasColocadas) {
               setFeedbackSimulacao("Equipe: \"Doutor, as pás ainda não foram conectadas.\"");
               setComandoUsuario("");
               return;
           }
           setChecklist(prev => ({...prev, sedacaoFeita: true}));
-          setFeedbackSimulacao("Equipe: \"Analgesia realizada com Fentanil e Midazolam. Paciente sedada.\"");
+          setFeedbackSimulacao("Equipe: \"Analgesia realizada. Paciente sedada.\"");
           setComandoUsuario("");
           return;
       }
 
-      // C. LIGAR / CONFIGURAR
-      if (cmd.includes("ligar") || cmd.includes("config") || cmd.includes("fixo") || cmd.includes("70") || cmd.includes("80")) {
+      // C. LIGAR
+      if (cmd.includes("ligar") || cmd.includes("config") || cmd.includes("fixo")) {
           if (!checklist.sedacaoFeita) {
-              acionarCondutaErrada("ERRO CRÍTICO: Você tentou ligar o Marcapasso (Choque) sem realizar sedação/analgesia antes.");
+              acionarCondutaErrada("ERRO CRÍTICO: Sedação necessária antes de ligar o Marcapasso.");
               return;
           }
           setChecklist(prev => ({...prev, mpLigado: true}));
-          setFeedbackSimulacao("Equipe: \"MP ligado em Modo Fixo. Frequência 70 bpm. Aguardando ajuste de corrente.\"");
+          setFeedbackSimulacao("Equipe: \"Marcapasso ligado em Modo Fixo. Frequência 70 bpm. Aguardando ajuste de corrente.\"");
           setComandoUsuario("");
           return;
       }
 
-      // D. AUMENTAR CORRENTE / CAPTURA ELÉTRICA
-      if (cmd.includes("aumentar") || cmd.includes("corrente") || cmd.includes("ma")) {
+      // D. AUMENTAR CORRENTE
+      if (cmd.includes("aumentar") || cmd.includes("corrente")) {
           if (!checklist.mpLigado) {
-              setFeedbackSimulacao("Equipe: \"O aparelho ainda está desligado, doutor.\"");
+              setFeedbackSimulacao("Equipe: \"O Marcapasso ainda está desligado.\"");
               setComandoUsuario("");
               return;
           }
           setChecklist(prev => ({...prev, capturaEletrica: true}));
-          setFeedbackSimulacao("Equipe: \"Aumentando mA... Temos captura elétrica no monitor! (Espícula seguida de QRS).\"");
+          setFeedbackSimulacao("Equipe: \"Aumentando mA... Temos captura elétrica no monitor!\"");
           setComandoUsuario("");
           return;
       }
 
-      // E. CHECAR PULSO (CAPTURA MECÂNICA)
+      // E. CHECAR PULSO
       if (cmd.includes("pulso") || cmd.includes("femoral")) {
           if (!checklist.capturaEletrica) {
-              setFeedbackSimulacao("Equipe: \"Ainda não visualizamos captura elétrica no monitor.\"");
-              setComandoUsuario("");
+              setFeedbackSimulacao("Equipe: \"Ainda não visualizamos captura elétrica.\"");
               return;
           }
           setChecklist(prev => ({...prev, capturaMecanica: true}));
-          setFeedbackSimulacao("Equipe: \"Checando pulso... Sim! Pulso femoral palpável e forte, sincrônico com o MP.\"");
+          setFeedbackSimulacao("Equipe: \"Checando pulso... Sim! Pulso femoral palpável, sincrônico com o Marcapasso.\"");
           setComandoUsuario("");
           return;
       }
 
-      // F. MARGEM DE SEGURANÇA (FIM)
+      // F. MARGEM DE SEGURANÇA
       if (cmd.includes("margem") || cmd.includes("10%") || cmd.includes("seguranca")) {
           if (!checklist.capturaMecanica) {
-              acionarCondutaErrada("Você ajustou a margem de segurança sem antes confirmar o pulso mecânico.");
+              acionarCondutaErrada("Confirme o pulso mecânico antes de ajustar a margem.");
               return;
           }
           setSinaisVitais({ ...sinaisVitais, fc: 70, pa: "110/70", consciencia: "Melhorando" });
-          setFeedbackSimulacao("Equipe: \"Margem de segurança ajustada. Paciente estável. Ótimo trabalho, doutor!\"");
+          setFeedbackSimulacao("Equipe: \"Margem de segurança ajustada. Paciente estável com Marcapasso Transcutâneo. Ótimo trabalho!\"");
           setEtapaSimulacao("sucesso");
           setComandoUsuario("");
           return;
       }
       
-      // Se digitou "marcapasso" genérico
-      setFeedbackSimulacao("Equipe: \"Vamos preparar o Marcapasso. Por favor, guie a sequência: Pás, Sedação, Ligar, Corrente, Pulso e Margem.\"");
+      // Se nada acima, instrução genérica
+      setFeedbackSimulacao("Equipe: \"Vamos preparar o Marcapasso. Guie a sequência: Pás, Sedação, Ligar, Corrente, Pulso e Margem.\"");
     }
 
     // EXAME FÍSICO
-    else if (cmd.includes("exame") || cmd.includes("ausculta") || cmd.includes("fisico")) {
-      setFeedbackSimulacao("Equipe: \"Exame físico: Pulmões limpos, extremidades frias e pálidas. Perfusão > 4s.\"");
+    else if (cmd.includes("exame") || cmd.includes("ausculta")) {
+      setFeedbackSimulacao("Equipe: \"Exame físico: Pulmões limpos, extremidades frias.\"");
     }
     
-    // COMANDO DESCONHECIDO (CATCH-ALL FINAL)
     else {
-        setFeedbackSimulacao("Equipe: \"Doutor, essas informações não temos. Tente perguntar de outra forma, escrever de outro jeito ou siga os passos do fluxograma.\"");
+        setFeedbackSimulacao("Equipe: \"Não compreendi. Tente reformular a ordem.\"");
     }
 
-    if (esperandoDose !== "atropina") {
+    if (esperandoDose !== "atropina" && !esperandoTipoMp) {
       setComandoUsuario("");
     }
   };
@@ -702,7 +710,7 @@ export default function App() {
       padding: "20px",
       boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
       textAlign: "center" as const,
-      position: "relative" as const // Necessário para o overlay de erro
+      position: "relative" as const
     },
     titulo: { color: "#1f2937", marginBottom: "20px", fontSize: "22px", fontWeight: "bold" },
     btnMenu: {
@@ -718,8 +726,6 @@ export default function App() {
     },
     valVital: { fontSize: "28px", fontWeight: "bold", display: "block" },
     labelVital: { fontSize: "12px", color: "#666", textTransform: "uppercase" },
-    
-    // FEEDBACK MAIOR E COM DESTAQUE (EMOJIS REDUZIDOS)
     feedbackBox: {
       backgroundColor: "#f0f9ff",
       color: "#0369a1",
@@ -734,7 +740,6 @@ export default function App() {
       boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
       lineHeight: "1.6"
     },
-    
     inputCmd: {
       width: "100%", padding: "12px", borderRadius: "8px", border: "2px solid #ddd",
       fontSize: "16px", outline: "none", marginBottom: "10px",
@@ -745,7 +750,6 @@ export default function App() {
       borderRadius: "8px", fontWeight: "bold", cursor: "pointer", width: "100%",
       boxSizing: "border-box" as const
     },
-    // ESTILO PARA O OVERLAY DE ERRO
     errorOverlay: {
         position: "absolute" as const, top: 0, left: 0, width: "100%", height: "100%",
         backgroundColor: "rgba(255, 255, 255, 0.98)", borderRadius: "16px",
@@ -811,9 +815,8 @@ export default function App() {
           </div>
           <div style={{textAlign: "left", marginBottom: "20px"}}>
             <ol style={{paddingLeft: "20px", lineHeight: "1.5"}}>
-              {/* 🚀 LÓGICA DE RENDERIZAÇÃO CORRIGIDA AQUI */}
               {dados.instrucoes.map((t, i) => {
-                const partes = t.split("|||"); // Verifica se existe o separador
+                const partes = t.split("|||");
                 return (
                   <li key={i} style={{marginBottom: "8px"}}>
                     {partes.length > 1 ? (
@@ -824,7 +827,7 @@ export default function App() {
                         </strong>
                       </>
                     ) : (
-                      t // Renderiza como texto simples se não houver separador
+                      t
                     )}
                   </li>
                 );
@@ -852,12 +855,20 @@ export default function App() {
     );
   }
 
-  // 4. TELA: SIMULAÇÃO / TREINO (COM LÓGICA DE MONITOR E DOSES)
+  // 4. TELA: SIMULAÇÃO / TREINO
   if (telaAtual === "treino_bradi") {
     const isApresentacao = etapaSimulacao === "apresentacao_caso";
 
     return (
       <div style={styles.container}>
+        <style>{`
+          @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+          }
+        `}</style>
+
         <div style={styles.card}>
           
           {/* === OVERLAY DE CONDUTA ERRADA === */}
@@ -943,7 +954,17 @@ export default function App() {
           {!isApresentacao && (
             <div style={{animation: "fadeIn 0.5s", opacity: msgErroAtual ? 0.3 : 1, pointerEvents: msgErroAtual ? "none" : "auto"}}>
               
-              {/* ÁREA DO MONITOR - SÓ APARECE SE TIVER SIDO SOLICITADO */}
+              {/* VIDEO - AGORA TAMBÉM RODA NA SIMULAÇÃO */}
+              <div style={{ marginBottom: "20px", textAlign: "center" }}>
+                <video
+                  autoPlay loop muted playsInline width="100%"
+                  style={{ borderRadius: "10px", maxHeight: "200px", maxWidth: "300px", objectFit: "cover", backgroundColor: "#000", pointerEvents: "none", margin: "0 auto", display: "block" }}
+                >
+                  <source src="https://i.imgur.com/8o2hBrl.mp4" type="video/mp4" />
+                </video>
+              </div>
+
+              {/* MONITOR */}
               {monitorVisivel && (
                 <div style={styles.monitor}>
                   <div style={{display: "flex", justifyContent: "space-between"}}>
@@ -953,21 +974,19 @@ export default function App() {
                     </div>
                     <div>
                       <span style={styles.labelVital}>PA (mmHg)</span>
-                      {/* LÓGICA: SÓ MOSTRA PA SE TIVER FEITO O CHECK DE PA */}
                       <span style={{...styles.valVital, color: checklist.paAferida ? (parseInt(sinaisVitais.pa) < 90 ? "#ff4444" : "#0f0") : "#333"}}>
                           {checklist.paAferida ? sinaisVitais.pa : "--/--"}
                       </span>
                     </div>
                     <div>
                       <span style={styles.labelVital}>SatO2</span>
-                      {/* LÓGICA: SÓ MOSTRA SAT SE TIVER FEITO O CHECK DE SAT */}
                       <span style={styles.valVital}>{checklist.satAferida ? sinaisVitais.sat + "%" : "--"}</span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ÁREA DO ECG (Se solicitado) */}
+              {/* ECG */}
               {mostrarECG && (
                   <div style={{margin: "20px 0", textAlign: "center", animation: "fadeIn 0.5s"}}>
                       <img
@@ -979,27 +998,55 @@ export default function App() {
                   </div>
               )}
 
-              {/* FEEDBACK DO SISTEMA (ALÇA FECHADA) */}
+              {/* FEEDBACK */}
               <div style={styles.feedbackBox}>
                 {feedbackSimulacao}
               </div>
 
-              {/* ÁREA DE COMANDO DE TEXTO */}
+              {/* COMANDO DE TEXTO + VOZ */}
               {(etapaSimulacao !== "sucesso" && etapaSimulacao !== "piora") && (
                 <form onSubmit={enviarComando} style={{marginTop: "20px"}}>
                   <p style={{fontSize: "16px", fontWeight: "bold", marginBottom: "10px", color: "#1f2937"}}>
-                    {esperandoDose ? `Qual a dose, Dr?` : (esperandoDiagnosticoECG ? "Qual o laudo, Dr?" : "Como deseja prosseguir, Dr?")}
+                    {esperandoDose ? `Qual a dose, Dr?` : (esperandoDiagnosticoECG ? "Qual o laudo, Dr?" : (esperandoTipoMp ? "Qual o tipo, Dr?" : "Como deseja prosseguir, Dr?"))}
                   </p>
-                  <input
-                    type="text"
-                    placeholder=""
-                    style={styles.inputCmd}
-                    value={comandoUsuario}
-                    onChange={(e) => setComandoUsuario(e.target.value)}
-                    autoFocus
-                    disabled={!!msgErroAtual} // Desabilita input se houver erro na tela
-                  />
-                  <button type="submit" style={styles.btnEnviar} disabled={!!msgErroAtual}>Enviar Conduta</button>
+                  
+                  <div style={{display: "flex", gap: "10px", marginBottom: "10px"}}>
+                    <input
+                      type="text"
+                      placeholder="Digite ou fale sua conduta..."
+                      style={{...styles.inputCmd, marginBottom: 0}}
+                      value={comandoUsuario}
+                      onChange={(e) => setComandoUsuario(e.target.value)}
+                      autoFocus
+                      disabled={!!msgErroAtual || isRecording}
+                    />
+                    
+                    <button
+                      type="button"
+                      onClick={iniciarGravacao}
+                      disabled={!!msgErroAtual || isRecording}
+                      style={{
+                        backgroundColor: isRecording ? "#ef4444" : "#cbd5e1",
+                        border: "none",
+                        borderRadius: "8px",
+                        width: "50px",
+                        cursor: "pointer",
+                        fontSize: "20px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all 0.2s",
+                        animation: isRecording ? "pulse 1.5s infinite" : "none"
+                      }}
+                      title="Gravar Áudio"
+                    >
+                      {isRecording ? "⬛" : "🎙️"}
+                    </button>
+                  </div>
+
+                  <button type="submit" style={styles.btnEnviar} disabled={!!msgErroAtual || isRecording}>
+                    Enviar Conduta
+                  </button>
                 </form>
               )}
 
