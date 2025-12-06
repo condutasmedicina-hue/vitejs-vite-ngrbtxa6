@@ -1,5 +1,4 @@
 import { useState } from "react";
-import React from 'react'; // Importação explícita do React para tipos
 
 // ==========================================
 // 1. DADOS DOS PROTOCOLOS (FLUXOGRAMAS)
@@ -237,8 +236,7 @@ export default function App() {
     
   // Estados para o simulador
   const [sinaisVitais, setSinaisVitais] = useState(cenarioInicial.sinais);
-  // CORREÇÃO: Usando React.ReactNode para aceitar strings OU JSX
-  const [feedbackSimulacao, setFeedbackSimulacao] = useState<string | React.ReactNode>(cenarioInicial.feedback);
+  const [feedbackSimulacao, setFeedbackSimulacao] = useState<string | JSX.Element>(cenarioInicial.feedback);
   const [etapaSimulacao, setEtapaSimulacao] = useState("apresentacao_caso");
   const [comandoUsuario, setComandoUsuario] = useState("");
   const [monitorVisivel, setMonitorVisivel] = useState(false);
@@ -248,9 +246,8 @@ export default function App() {
   const [esperandoDiagnosticoECG, setEsperandoDiagnosticoECG] = useState(false);
   const [tentativasECG, setTentativasECG] = useState(0);
 
-  // CORREÇÃO: Usando string | null para o estado de espera
   const [esperandoDose, setEsperandoDose] = useState<string | null>(null);
-  const [atropinaCount, setAtropinaCount] = useState(0); 
+  const [atropinaCount, setAtropinaCount] = useState(0);
 
   // Checklist rigoroso
   const [checklist, setChecklist] = useState({
