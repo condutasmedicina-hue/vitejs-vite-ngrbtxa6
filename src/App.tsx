@@ -250,7 +250,7 @@ export default function App() {
 
   // --- REFS PARA O SCROLL HÍBRIDO ---
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  
+   
   // VELOCIDADE BASE (AUTOMÁTICA)
   const BASE_SPEED = 0.75; 
   const currentSpeedRef = useRef(BASE_SPEED); 
@@ -788,7 +788,8 @@ export default function App() {
       minHeight: "100vh",
       backgroundColor: "#f0f2f5",
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-      padding: isMobile ? "10px" : "20px",
+      // ALTERADO: Remove o padding no desktop para usar 100% da tela
+      padding: isMobile ? "10px" : "0",
       display: "flex",
       justifyContent: "center",
       alignItems: isMobile ? "flex-start" : "center", 
@@ -796,7 +797,8 @@ export default function App() {
     },
     menuContainer: {
         width: "100%",
-        maxWidth: "900px",
+        // ALTERADO: Mudei de 900px para 100% para pegar a tela toda
+        maxWidth: "100%",
         padding: "20px 0",
         textAlign: "left" as const,
         overflow: "hidden" 
@@ -806,14 +808,14 @@ export default function App() {
         fontWeight: "800",
         color: "#1c1c1e",
         marginBottom: "20px",
-        paddingLeft: "10px"
+        paddingLeft: "20px" // Ajuste de padding para não colar na borda
     },
     sectionTitle: {
         fontSize: isMobile ? "18px" : "22px",
         fontWeight: "700",
         color: "#1c1c1e",
         marginBottom: "15px",
-        paddingLeft: "10px",
+        paddingLeft: "20px", // Ajuste de padding
         marginTop: "30px"
     },
     marqueeContainer: {
@@ -912,12 +914,14 @@ export default function App() {
     card: {
       backgroundColor: "white",
       width: "100%",
-      maxWidth: "800px",
-      borderRadius: "16px",
-      padding: isMobile ? "15px" : "20px",
+      // ALTERADO: Mudei de 800px para 100% para pegar a tela toda nas simulações
+      maxWidth: "100%", 
+      borderRadius: isMobile ? "16px" : "0", // Remove borda arredondada se for full screen desktop
+      padding: isMobile ? "15px" : "40px",
       boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
       textAlign: "center" as const,
-      position: "relative" as const
+      position: "relative" as const,
+      minHeight: isMobile ? "auto" : "100vh" // Garante altura total no desktop
     },
     titulo: { 
         color: "#1f2937", 
@@ -1029,7 +1033,7 @@ export default function App() {
             </div>
 
             <h3 style={styles.sectionTitle}>Mais Protocolos</h3>
-            <div style={{display: "flex", gap: "20px", flexWrap: "wrap", justifyContent: "flex-start", paddingLeft: "10px"}}>
+            <div style={{display: "flex", gap: "20px", flexWrap: "wrap", justifyContent: "flex-start", paddingLeft: "20px"}}>
                 <div style={styles.smallCard}>
                     <div style={{fontSize: "30px", marginBottom: "10px"}}>🫀</div>
                     <div>
@@ -1088,7 +1092,7 @@ export default function App() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <div style={{backgroundColor: corFundo, padding: "15px", margin: isMobile ? "-15px -15px 15px -15px" : "-20px -20px 20px -20px", color: "white"}}>
+          <div style={{backgroundColor: corFundo, padding: "15px", margin: isMobile ? "-15px -15px 15px -15px" : "-40px -40px 20px -40px", color: "white"}}>
             <h3 style={{margin: 0, fontSize: isMobile ? "18px" : "22px"}}>{dados.titulo}</h3>
           </div>
           <div style={{textAlign: "left", marginBottom: "20px"}}>
