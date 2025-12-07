@@ -817,13 +817,13 @@ export default function App() {
         marginTop: "30px"
     },
     marqueeContainer: {
-        // CORREÇÃO DO ERRO DO VERCEL: Usamos 'as any' para evitar erro de tipo estrito em overflowX e scrollSnapType
+        // CORREÇÃO DO ERRO DO VERCEL: Usamos 'as any' para evitar erro de tipo estrito em propriedades CSS opcionais ou específicas
         overflowX: (isMobile ? "auto" : "hidden") as any, 
         overflowY: "hidden" as const,
         width: "100%",
         padding: "40px 0", 
         marginTop: "-40px",
-        WebkitOverflowScrolling: "touch",
+        WebkitOverflowScrolling: "touch" as any, // Adicionado 'as any' aqui também para garantir
         scrollSnapType: (isMobile ? "x mandatory" : "none") as any
     },
     marqueeTrack: {
