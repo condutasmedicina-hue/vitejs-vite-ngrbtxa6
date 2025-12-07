@@ -817,14 +817,14 @@ export default function App() {
         marginTop: "30px"
     },
     marqueeContainer: {
-        // CRUCIAL: Se for mobile, usa scroll nativo (auto). Se for desktop, esconde a barra (hidden) pois o JS controla.
-        overflowX: isMobile ? "auto" : "hidden", 
+        // CORREÇÃO DO ERRO DO VERCEL: Usamos 'as any' para evitar erro de tipo estrito em overflowX e scrollSnapType
+        overflowX: (isMobile ? "auto" : "hidden") as any, 
         overflowY: "hidden" as const,
         width: "100%",
         padding: "40px 0", 
         marginTop: "-40px",
         WebkitOverflowScrolling: "touch",
-        scrollSnapType: isMobile ? "x mandatory" : "none"
+        scrollSnapType: (isMobile ? "x mandatory" : "none") as any
     },
     marqueeTrack: {
         display: "flex",
