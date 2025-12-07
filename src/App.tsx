@@ -218,6 +218,15 @@ export default function App() {
   const [telaAtual, setTelaAtual] = useState("menu");
   const [passoFluxo, setPassoFluxo] = useState("inicio");
     
+  // --- DETECÇÃO DE MOBILE ---
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   // Estados para o simulador
   const [sinaisVitais, setSinaisVitais] = useState(cenarioInicial.sinais);
   const [feedbackSimulacao, setFeedbackSimulacao] = useState<React.ReactNode>(cenarioInicial.feedback);
@@ -242,13 +251,11 @@ export default function App() {
   // --- REFS PARA O SCROLL HÍBRIDO ---
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
-  // VELOCIDADE FIXADA EM 0.65
-  const BASE_SPEED = 0.70; 
-  
+  // VELOCIDADE BASE (AUTOMÁTICA)
+  const BASE_SPEED = 0.75; 
   const currentSpeedRef = useRef(BASE_SPEED); 
   const targetSpeedRef = useRef(BASE_SPEED); 
   const animationFrameRef = useRef<number | null>(null);
-  const scrollPosRef = useRef(0);
 
   // --- FUNÇÕES DE NAVEGAÇÃO ---
   const irParaMenu = () => {
@@ -303,79 +310,69 @@ export default function App() {
   };
 
   // =========================================================
-  // LOGICA DO SCROLL HÍBRIDO (AUTO + MOUSE)
+  // LOGICA DO SCROLL: AUTO (DESKTOP) VS TOUCH (MOBILE)
   // =========================================================
   const handleMouseMoveScroll = (e: React.MouseEvent) => {
+    // DESATIVA INTERAÇÃO DE MOUSE SE FOR TOUCH/MOBILE
+    if (isMobile) return; 
+    
     if (!scrollContainerRef.current) return;
-
     const { left, width } = scrollContainerRef.current.getBoundingClientRect();
     const mouseX = e.clientX - left; 
     const percentage = mouseX / width; 
 
-    // LÓGICA DE VELOCIDADE
+    // Acelera ou desacelera baseado na posição do mouse
     if (percentage < 0.25) {
-        // Borda Esquerda: Acelera pra esquerda (negativo)
         targetSpeedRef.current = -12 * (1 - (percentage / 0.25)) - BASE_SPEED; 
     } else if (percentage > 0.75) {
-        // Borda Direita: Acelera pra direita (positivo)
         targetSpeedRef.current = 12 * ((percentage - 0.75) / 0.25) + BASE_SPEED;
     } else {
-        // CENTRO: QUASE PARANDO (Velocidade muito baixa para leitura)
-        targetSpeedRef.current = 0.2; 
+        // No centro, mantém uma velocidade mínima automática
+        targetSpeedRef.current = 0.5; 
     }
   };
 
   const handleMouseLeaveScroll = () => {
-      // Saiu do módulo: Volta para velocidade padrão
+      if (isMobile) return;
+      // Quando o mouse sai, volta para a velocidade automática padrão
       targetSpeedRef.current = BASE_SPEED;
   };
 
-  // Loop de animação com FÍSICA (Inércia)
+  // Loop de animação (SÓ RODA NO DESKTOP)
   useEffect(() => {
+      if (isMobile) {
+        // Se for mobile, cancela qualquer animação anterior e não inicia nova
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        return; 
+      }
+
       const loop = () => {
           if (scrollContainerRef.current) {
               const container = scrollContainerRef.current;
-
-              // Suavização (Easing) para transição de velocidade fluida
               const easingFactor = 0.05;
+              
+              // Suavização da velocidade
               currentSpeedRef.current += (targetSpeedRef.current - currentSpeedRef.current) * easingFactor;
               
               container.scrollLeft += currentSpeedRef.current;
-              scrollPosRef.current += currentSpeedRef.current; // Mantem controle no ref float
 
-              // LÓGICA DE REINÍCIO PERFEITO
-              // Largura do Card (300px) + Gap (25px) = 325px
-              // 5 Cards únicos * 325px = 1625px (Tamanho de 1 Bloco)
-              // Usamos 6 blocos no array abaixo para garantir buffer infinito
-              const singleBlockWidth = 1625;
-
-              // Quando passar de 2 blocos completos, volta 1 bloco
-              // Isso mantém a posição visual inalterada, mas reseta o numero
-              if (scrollPosRef.current >= singleBlockWidth * 2) {
-                  container.scrollLeft -= singleBlockWidth;
-                  scrollPosRef.current -= singleBlockWidth;
-              } 
-              // Se rolar pra trás (mouse na esquerda)
-              else if (scrollPosRef.current <= singleBlockWidth) {
-                  container.scrollLeft += singleBlockWidth;
-                  scrollPosRef.current += singleBlockWidth;
-              }
+              // Lógica do Loop Infinito (Teletransporte suave)
+              if (container.scrollLeft >= (container.scrollWidth / 4) * 3) {
+                   container.scrollLeft = container.scrollWidth / 4; 
+               }
+               if (container.scrollLeft <= 0) {
+                   container.scrollLeft = (container.scrollWidth / 4) * 2;
+               }
           }
           animationFrameRef.current = requestAnimationFrame(loop);
       };
       
-      // Inicia o scroll um pouco a frente para ter buffer para esquerda
-      if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollLeft = 1625 * 1.5;
-          scrollPosRef.current = 1625 * 1.5;
-      }
-
       loop();
       
       return () => {
           if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       }
-  }, []);
+  }, [isMobile]); // Recarrega se mudar de mobile pra desktop
 
 
   // =========================================================
@@ -415,13 +412,14 @@ export default function App() {
     recognition.start();
   };
 
-  // --- LÓGICA DO "CÉREBRO" (RIGOROSO COM O FLUXOGRAMA) ---
+  // --- LÓGICA DO "CÉREBRO" ---
   const enviarComando = (e: React.FormEvent) => {
     e.preventDefault();
     if (!comandoUsuario) return;
 
     const cmd = comandoUsuario.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
+    
+    // ... (Mesma lógica mantida)
     if (esperandoDiagnosticoECG) {
         if (cmd.includes("sinusal") && (cmd.includes("bradi") || cmd.includes("lento"))) {
             setFeedbackSimulacao("✅ EXCELENTE! Diagnóstico correto: Bradicardia Sinusal.\n\nO ritmo é regular, tem onda P antes de todo QRS, mas a frequência está baixa (<50 bpm).\n\nQual o próximo passo, doutor?");
@@ -715,7 +713,7 @@ export default function App() {
         gradient: "linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)",
         imgSrc: "https://i.imgur.com/FC7vOtt.png",
         imgAlt: "Coração Vermelho Bradicardia",
-        imgSize: "180px", 
+        imgSize: isMobile ? "140px" : "180px", 
         label: "EMERGÊNCIA",
         title: "Bradicardias",
         desc: "Organize condutas e salve vidas em 5 passos.",
@@ -729,7 +727,7 @@ export default function App() {
         gradient: "linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)",
         imgSrc: "https://i.imgur.com/oqjaMV4.png",
         imgAlt: "Raio Taquicardia",
-        imgSize: "130px",
+        imgSize: isMobile ? "100px" : "130px",
         label: "ARRITMIA",
         title: "Taquicardias",
         desc: "Diagnóstico e cardioversão rápida.",
@@ -741,9 +739,9 @@ export default function App() {
     {
         id: "pcr_chocavel",
         gradient: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
-        imgSrc: "https://i.imgur.com/uPXPUD8.png", // IMAGEM DO USUÁRIO
+        imgSrc: "https://i.imgur.com/uPXPUD8.png", 
         imgAlt: "Monitor FV TV",
-        imgSize: "200px", 
+        imgSize: isMobile ? "150px" : "200px", 
         label: "PCR CHOCÁVEL",
         title: "FV e TV sem Pulso",
         desc: "Protocolo de desfibrilação imediata.",
@@ -754,10 +752,10 @@ export default function App() {
     },
     {
         id: "assistolia",
-        gradient: "linear-gradient(135deg, #059669 0%, #34d399 100%)", // Tons verdes
+        gradient: "linear-gradient(135deg, #059669 0%, #34d399 100%)", 
         imgSrc: "https://i.imgur.com/T4QxtYu.png", 
         imgAlt: "Linha reta Assistolia",
-        imgSize: "210px", 
+        imgSize: isMobile ? "160px" : "210px", 
         label: "PCR NÃO CHOCÁVEL",
         title: "Assistolia e AESP",
         desc: "Protocolo de adrenalina e via aérea.",
@@ -768,10 +766,10 @@ export default function App() {
     },
     {
         id: "sca",
-        gradient: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)", // Tons vermelhos
-        imgSrc: "https://i.imgur.com/lbebkzD.png", // IMAGEM DO USUÁRIO
+        gradient: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)", 
+        imgSrc: "https://i.imgur.com/lbebkzD.png", 
         imgAlt: "Coração SCA",
-        imgSize: "200px", 
+        imgSize: isMobile ? "150px" : "200px", 
         label: "CORONÁRIA",
         title: "S. Coronariana Aguda",
         desc: "IAM com e sem supra de ST.",
@@ -782,37 +780,36 @@ export default function App() {
     }
   ];
 
-  // AUMENTADO PARA 6 VEZES PARA GARANTIR BUFFER INFINITO
-  const infiniteCards = [...cardsData, ...cardsData, ...cardsData, ...cardsData, ...cardsData, ...cardsData];
+  const infiniteCards = [...cardsData, ...cardsData, ...cardsData, ...cardsData];
 
-  // --- ESTILOS GERAIS ---
+  // --- ESTILOS GERAIS RESPONSIVOS ---
   const styles = {
     container: {
       minHeight: "100vh",
       backgroundColor: "#f0f2f5",
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-      padding: "20px",
+      padding: isMobile ? "10px" : "20px",
       display: "flex",
       justifyContent: "center",
-      alignItems: "center",
+      alignItems: isMobile ? "flex-start" : "center", 
       boxSizing: "border-box" as const
     },
     menuContainer: {
         width: "100%",
-        // REMOVIDO MAX-WIDTH PARA OCUPAR TELA TODA
+        maxWidth: "900px",
         padding: "20px 0",
         textAlign: "left" as const,
         overflow: "hidden" 
     },
     headerTitle: {
-        fontSize: "32px",
+        fontSize: isMobile ? "24px" : "32px",
         fontWeight: "800",
         color: "#1c1c1e",
         marginBottom: "20px",
         paddingLeft: "10px"
     },
     sectionTitle: {
-        fontSize: "22px",
+        fontSize: isMobile ? "18px" : "22px",
         fontWeight: "700",
         color: "#1c1c1e",
         marginBottom: "15px",
@@ -820,10 +817,14 @@ export default function App() {
         marginTop: "30px"
     },
     marqueeContainer: {
-        overflow: "hidden", 
+        // CRUCIAL: Se for mobile, usa scroll nativo (auto). Se for desktop, esconde a barra (hidden) pois o JS controla.
+        overflowX: isMobile ? "auto" : "hidden", 
+        overflowY: "hidden" as const,
         width: "100%",
         padding: "40px 0", 
-        marginTop: "-40px"
+        marginTop: "-40px",
+        WebkitOverflowScrolling: "touch",
+        scrollSnapType: isMobile ? "x mandatory" : "none"
     },
     marqueeTrack: {
         display: "flex",
@@ -833,8 +834,8 @@ export default function App() {
         paddingRight: "20px"
     },
     bigCard: {
-        flex: "0 0 300px",
-        minHeight: "380px",
+        flex: isMobile ? "0 0 260px" : "0 0 300px",
+        minHeight: isMobile ? "320px" : "380px",
         borderRadius: "20px",
         position: "relative" as const,
         overflow: "hidden",
@@ -843,7 +844,8 @@ export default function App() {
         transition: "transform 0.2s, box-shadow 0.2s",
         display: "flex",
         flexDirection: "column" as const,
-        justifyContent: "space-between"
+        justifyContent: "space-between",
+        scrollSnapAlign: "center"
     },
     cardTopPadding: {
          padding: "30px 20px 20px 20px",
@@ -868,7 +870,7 @@ export default function App() {
     },
     cardImage3D: {
         position: "absolute" as const,
-        top: "30%", // IMAGEM MAIS ALTA
+        top: "30%", 
         left: "50%",
         transform: "translate(-50%, -50%)", 
         objectFit: "contain" as const,
@@ -894,7 +896,6 @@ export default function App() {
         fontSize: "14px",
         cursor: "pointer",
     },
-    // ... (Outros estilos mantidos: smallCard, card, monitor, etc.)
     smallCard: {
         flex: "1 1 200px",
         backgroundColor: "white",
@@ -913,32 +914,37 @@ export default function App() {
       width: "100%",
       maxWidth: "800px",
       borderRadius: "16px",
-      padding: "20px",
+      padding: isMobile ? "15px" : "20px",
       boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
       textAlign: "center" as const,
       position: "relative" as const
     },
-    titulo: { color: "#1f2937", marginBottom: "20px", fontSize: "22px", fontWeight: "bold" },
+    titulo: { 
+        color: "#1f2937", 
+        marginBottom: "20px", 
+        fontSize: isMobile ? "18px" : "22px", 
+        fontWeight: "bold" 
+    },
     btnMenu: {
       width: "100%", padding: "18px", margin: "8px 0", borderRadius: "12px",
-      border: "none", fontSize: "16px", fontWeight: "bold", cursor: "pointer",
+      border: "none", fontSize: isMobile ? "14px" : "16px", fontWeight: "bold", cursor: "pointer",
       color: "white", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
     },
     monitor: {
-      backgroundColor: "#000", color: "#0f0", padding: "20px", borderRadius: "10px",
+      backgroundColor: "#000", color: "#0f0", padding: isMobile ? "10px" : "20px", borderRadius: "10px",
       fontFamily: "Courier New, monospace", marginBottom: "20px", textAlign: "left" as const,
       border: "4px solid #333",
       animation: "fadeIn 0.5s"
     },
-    valVital: { fontSize: "28px", fontWeight: "bold", display: "block" },
-    labelVital: { fontSize: "12px", color: "#666", textTransform: "uppercase" },
+    valVital: { fontSize: isMobile ? "20px" : "28px", fontWeight: "bold", display: "block" },
+    labelVital: { fontSize: "10px", color: "#666", textTransform: "uppercase" as const },
     feedbackBox: {
       backgroundColor: "#f0f9ff",
       color: "#0369a1",
-      padding: "25px",
+      padding: isMobile ? "15px" : "25px",
       borderRadius: "12px",
       marginBottom: "25px",
-      fontSize: "18px",
+      fontSize: isMobile ? "15px" : "18px",
       borderLeft: "8px solid #0ea5e9",
       textAlign: "left" as const,
       fontStyle: "italic",
@@ -1004,7 +1010,7 @@ export default function App() {
                             
                             <div style={styles.cardTopPadding}>
                                 <p style={styles.textLabel}>{card.label}</p>
-                                <h2 style={{margin: "0 0 8px 0", fontSize: "28px", fontWeight: 800}}>{card.title}</h2>
+                                <h2 style={{margin: "0 0 8px 0", fontSize: isMobile ? "22px" : "28px", fontWeight: 800}}>{card.title}</h2>
                                 <p style={{margin: "0", fontSize: "15px", opacity: 0.95, lineHeight: "1.5", maxWidth: "90%"}}>
                                     {card.desc}
                                 </p>
@@ -1072,7 +1078,7 @@ export default function App() {
       </div>
     );
   }
-
+  
   if (telaAtual === "fluxo_bradi") {
     const dados = protocoloBradicardia[passoFluxo as keyof typeof protocoloBradicardia];
     const corTopo = { neutro: "#3b82f6", sucesso: "#10b981", alerta: "#f59e0b", perigo: "#ef4444", azul: "#0ea5e9" };
@@ -1082,11 +1088,11 @@ export default function App() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <div style={{backgroundColor: corFundo, padding: "15px", margin: "-20px -20px 20px -20px", color: "white"}}>
-            <h3 style={{margin: 0}}>{dados.titulo}</h3>
+          <div style={{backgroundColor: corFundo, padding: "15px", margin: isMobile ? "-15px -15px 15px -15px" : "-20px -20px 20px -20px", color: "white"}}>
+            <h3 style={{margin: 0, fontSize: isMobile ? "18px" : "22px"}}>{dados.titulo}</h3>
           </div>
           <div style={{textAlign: "left", marginBottom: "20px"}}>
-            <ol style={{paddingLeft: "20px", lineHeight: "1.5"}}>
+            <ol style={{paddingLeft: "20px", lineHeight: "1.5", fontSize: isMobile ? "14px" : "16px"}}>
               {dados.instrucoes.map((t, i) => {
                 const partes = t.split("|||");
                 return (
@@ -1145,13 +1151,13 @@ export default function App() {
           
           {msgErroAtual && (
             <div style={styles.errorOverlay}>
-                <div style={{textAlign: "center", maxWidth: "80%"}}>
-                    <h2 style={{color: "#b91c1c", marginBottom: "20px", fontSize: "24px"}}>⚠️ Conduta Incorreta</h2>
+                <div style={{textAlign: "center", maxWidth: "90%"}}>
+                    <h2 style={{color: "#b91c1c", marginBottom: "20px", fontSize: "20px"}}>⚠️ Conduta Incorreta</h2>
                     
                     {!mostrarDica ? (
                         <div style={{marginBottom: "30px"}}>
                             <p style={{color: "#555", marginBottom: "15px"}}>Você cometeu um erro crítico no protocolo.</p>
-                            <div style={{display: "flex", justifyContent: "center", gap: "20px"}}>
+                            <div style={{display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap"}}>
                                 <button
                                     style={{...styles.btnErro, backgroundColor: "#f59e0b", color: "white"}}
                                     onClick={() => setMostrarDica(true)}
@@ -1168,11 +1174,11 @@ export default function App() {
                         </div>
                     ) : (
                         <>
-                            <div style={{backgroundColor: "#fee2e2", padding: "20px", borderRadius: "10px", marginBottom: "30px", color: "#7f1d1d", fontSize: "18px", animation: "fadeIn 0.5s"}}>
+                            <div style={{backgroundColor: "#fee2e2", padding: "15px", borderRadius: "10px", marginBottom: "30px", color: "#7f1d1d", fontSize: "16px", animation: "fadeIn 0.5s"}}>
                                 <strong>Dica do Protocolo:</strong><br/><br/>
                                 {msgErroAtual}
                             </div>
-                            <div style={{display: "flex", justifyContent: "center", gap: "20px"}}>
+                            <div style={{display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap"}}>
                                 <button
                                     style={{...styles.btnErro, backgroundColor: "#3b82f6"}}
                                     onClick={continuarAposDica}
@@ -1287,6 +1293,7 @@ export default function App() {
                         border: "none",
                         borderRadius: "8px",
                         width: "50px",
+                        flexShrink: 0,
                         cursor: "pointer",
                         fontSize: "20px",
                         display: "flex",
