@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
 // ==========================================
 // 0. CONFIGURAÇÃO DE TIPOS (PARA TYPESCRIPT)
@@ -44,7 +44,7 @@ const protocoloBradicardia = {
     titulo: "Sinais de Má Perfusão?",
     instrucoes: [
       "Busque os '4 D's' e sinais de choque:",
-      "Dispneia / Congestão Pulmonar",
+      "Dispneia (Dificuldade de respirar) / Congestão Pulmonar",
       "Dor Anginosa (Torácica)",
       "Diminuição da consciência (Confusão)",
       "Diminuição da PA (Hipotensão/Choque)"
@@ -224,40 +224,27 @@ export default function App() {
   const [etapaSimulacao, setEtapaSimulacao] = useState("apresentacao_caso");
   const [comandoUsuario, setComandoUsuario] = useState("");
   const [monitorVisivel, setMonitorVisivel] = useState(false);
-  
-  // ESTADOS DO RECONHECIMENTO DE VOZ
   const [isRecording, setIsRecording] = useState(false);
-  
-  // NOVOS ESTADOS PARA O ECG
   const [mostrarECG, setMostrarECG] = useState(false);
   const [esperandoDiagnosticoECG, setEsperandoDiagnosticoECG] = useState(false);
   const [tentativasECG, setTentativasECG] = useState(0);
-
   const [esperandoDose, setEsperandoDose] = useState<string | null>(null);
   const [atropinaCount, setAtropinaCount] = useState(0);
-
-  // NOVO: Esperar tipo do Marcapasso
   const [esperandoTipoMp, setEsperandoTipoMp] = useState(false);
-
-  // Checklist rigoroso
   const [checklist, setChecklist] = useState({
-    movFeito: false,
-    paAferida: false,
-    satAferida: false,
-    estabilidadeChecada: false, // Só vira true se o ALUNO falar "Instável"
-    ecgFeito: false,
-    atropinaFeita: false,
-    tipoMpDefinido: false,
-    pasColocadas: false,
-    sedacaoFeita: false,
-    mpLigado: false,
-    capturaEletrica: false,
-    capturaMecanica: false
+    movFeito: false, paAferida: false, satAferida: false, estabilidadeChecada: false,
+    ecgFeito: false, atropinaFeita: false, tipoMpDefinido: false, pasColocadas: false,
+    sedacaoFeita: false, mpLigado: false, capturaEletrica: false, capturaMecanica: false
   });
-
-  // Estados de Erro
   const [msgErroAtual, setMsgErroAtual] = useState<string | null>(null);
   const [mostrarDica, setMostrarDica] = useState(false);
+
+  // --- REFS PARA O SCROLL HÍBRIDO ---
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const BASE_SPEED = 1.5; 
+  const currentSpeedRef = useRef(BASE_SPEED); 
+  const targetSpeedRef = useRef(BASE_SPEED); 
+  const animationFrameRef = useRef<number | null>(null);
 
   // --- FUNÇÕES DE NAVEGAÇÃO ---
   const irParaMenu = () => {
@@ -300,7 +287,6 @@ export default function App() {
     setEtapaSimulacao("inicio");
   }
 
-  // Função chamada quando o usuário comete um erro de conduta
   const acionarCondutaErrada = (motivo: string) => {
     setMsgErroAtual(motivo);
     setMostrarDica(false);
@@ -311,6 +297,65 @@ export default function App() {
       setMsgErroAtual(null);
       setMostrarDica(false);
   };
+
+  // =========================================================
+  // LOGICA DO SCROLL HÍBRIDO (AUTO + MOUSE)
+  // =========================================================
+  const handleMouseMoveScroll = (e: React.MouseEvent) => {
+    if (!scrollContainerRef.current) return;
+
+    const { left, width } = scrollContainerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - left; 
+    const percentage = mouseX / width; 
+
+    // LÓGICA DE VELOCIDADE
+    if (percentage < 0.25) {
+        // Borda Esquerda: Acelera pra esquerda (negativo)
+        targetSpeedRef.current = -12 * (1 - (percentage / 0.25)) - BASE_SPEED; 
+    } else if (percentage > 0.75) {
+        // Borda Direita: Acelera pra direita (positivo)
+        targetSpeedRef.current = 12 * ((percentage - 0.75) / 0.25) + BASE_SPEED;
+    } else {
+        // CENTRO: QUASE PARANDO (Velocidade muito baixa para leitura)
+        targetSpeedRef.current = 0.2; 
+    }
+  };
+
+  const handleMouseLeaveScroll = () => {
+      // Saiu do módulo: Volta para velocidade padrão
+      targetSpeedRef.current = BASE_SPEED;
+  };
+
+  // Loop de animação com FÍSICA (Inércia)
+  useEffect(() => {
+      const loop = () => {
+          if (scrollContainerRef.current) {
+              const container = scrollContainerRef.current;
+
+              // Suavização (Easing) para transição de velocidade fluida
+              const easingFactor = 0.05;
+              currentSpeedRef.current += (targetSpeedRef.current - currentSpeedRef.current) * easingFactor;
+              
+              container.scrollLeft += currentSpeedRef.current;
+
+              // Loop Infinito visual
+               if (container.scrollLeft >= (container.scrollWidth / 4) * 3) {
+                   container.scrollLeft = container.scrollWidth / 4; 
+               }
+               if (container.scrollLeft <= 0) {
+                   container.scrollLeft = (container.scrollWidth / 4) * 2;
+               }
+          }
+          animationFrameRef.current = requestAnimationFrame(loop);
+      };
+      
+      loop();
+      
+      return () => {
+          if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      }
+  }, []);
+
 
   // =========================================================
   // FUNÇÃO DE GRAVAÇÃO DE VOZ (SPEECH TO TEXT)
@@ -354,12 +399,8 @@ export default function App() {
     e.preventDefault();
     if (!comandoUsuario) return;
 
-    // NORMALIZAÇÃO: Remove acentos e joga para minúsculo
     const cmd = comandoUsuario.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    // ===============================================
-    // LÓGICA DE DIAGNÓSTICO DO ECG
-    // ===============================================
     if (esperandoDiagnosticoECG) {
         if (cmd.includes("sinusal") && (cmd.includes("bradi") || cmd.includes("lento"))) {
             setFeedbackSimulacao("✅ EXCELENTE! Diagnóstico correto: Bradicardia Sinusal.\n\nO ritmo é regular, tem onda P antes de todo QRS, mas a frequência está baixa (<50 bpm).\n\nQual o próximo passo, doutor?");
@@ -380,9 +421,6 @@ export default function App() {
         return;
     }
 
-    // ===============================================
-    // LÓGICA: QUAL O TIPO DE MARCAPASSO?
-    // ===============================================
     if (esperandoTipoMp) {
         if (cmd.includes("transcutaneo") || cmd.includes("externo")) {
             setChecklist(prev => ({...prev, tipoMpDefinido: true}));
@@ -397,11 +435,7 @@ export default function App() {
         return;
     }
     
-    // ===============================================
-    // LÓGICA DE DOSES (ATROPINA)
-    // ===============================================
     if (esperandoDose === "atropina") {
-      // 🚨 ATUALIZAÇÃO AQUI: ACEITA "1 mg" OU "1 miligrama" E VARIAÇÕES
       if (
           cmd.includes("1mg") || 
           cmd.includes("1 mg") || 
@@ -428,9 +462,6 @@ export default function App() {
       return;
     }
 
-    // ===============================================
-    // LÓGICA PRIORITÁRIA: PERGUNTAS / ANAMNESE
-    // ===============================================
     if (
       cmd.includes("sentindo") || cmd.includes("sente") || cmd.includes("ajudar") ||
       cmd.includes("queixa") || cmd.includes("fale") || cmd.includes("conte") ||
@@ -456,11 +487,6 @@ export default function App() {
       return;
     }
 
-    // ===============================================
-    // 5. RECONHECIMENTO DE INSTABILIDADE (CHECKLIST OBRIGATÓRIO)
-    // ===============================================
-
-    // O ALUNO DEVE FALAR "INSTÁVEL" PARA DESBLOQUEAR
     else if (cmd.includes("instavel") || cmd.includes("instabilidade")) {
       setChecklist(prev => ({...prev, estabilidadeChecada: true}));
       setFeedbackSimulacao(
@@ -480,21 +506,17 @@ export default function App() {
       return;
     }
     
-    // SE O ALUNO DISSER QUE ESTÁ ESTÁVEL (ERRO PROPOSITAL)
     else if (cmd.includes("estavel") && !cmd.includes("instavel")) {
         acionarCondutaErrada("Cuidado doutor. Avalie novamente. PA 80/40 e Sonolência são sinais de estabilidade?");
         return;
     }
 
-    // ===============================================
-    // 6. AVALIAÇÃO DOS 4 D's
-    // ===============================================
     else if (cmd.includes("dor") || cmd.includes("peito") || cmd.includes("angina")) {
       setFeedbackSimulacao("Dona Creusa: \"Não, doutor. Não sinto dor no peito.\" (Dor Anginosa: AUSENTE)");
       setComandoUsuario("");
       return;
     }
-    else if (cmd.includes("falta") && cmd.includes("ar") || cmd.includes("dispneia")) {
+    else if ((cmd.includes("falta") && cmd.includes("ar")) || cmd.includes("dispneia") || (cmd.includes("dificuldade") && cmd.includes("respirar"))) {
       setFeedbackSimulacao("Dona Creusa: \"O ar entra normal, não sinto falta de ar não.\" (Dispneia: AUSENTE)");
       setComandoUsuario("");
       return;
@@ -504,18 +526,12 @@ export default function App() {
       setComandoUsuario("");
       return;
     }
-    // SE PERGUNTAR ESPECIFICAMENTE DA HIPOTENSÃO
     else if (cmd.includes("hipotensao") || (cmd.includes("diminuicao") && cmd.includes("pa"))) {
       setFeedbackSimulacao("Equipe: \"A PA está 80/40 mmHg. Isso configura Hipotensão, doutor? (Aguardando sua classificação)\"");
       setComandoUsuario("");
       return;
     }
 
-    // ===============================================
-    // 7. PROCEDIMENTOS CLÍNICOS
-    // ===============================================
-
-    // MONITOR / MOV
     else if (cmd.includes("monitor") || cmd.includes("mov") || cmd.includes("oxigenio") || cmd.includes("veia")) {
       let respostaEquipe = "Equipe: \"Compreendido.\"";
       if (cmd.includes("monitor") || cmd.includes("mov")) {
@@ -528,7 +544,6 @@ export default function App() {
       setFeedbackSimulacao(respostaEquipe);
     }
 
-    // ECG
     else if (cmd.includes("ecg") || cmd.includes("eletro")) {
       if (!checklist.movFeito) {
         acionarCondutaErrada("Você solicitou ECG antes de monitorizar o paciente (MOV).");
@@ -540,7 +555,6 @@ export default function App() {
       setFeedbackSimulacao("Equipe: \"Rodando ECG... Pronto. Qual o seu laudo?\"");
     }
 
-    // PA / SINAIS (ALTERADO: NÃO CLASSIFICA MAIS AUTOMATICAMENTE)
     else if (cmd.includes("pa") || cmd.includes("pressao") || cmd.includes("estabilidade") || cmd.includes("sinais") || cmd.includes("sinais vitais")) {
       
       if (!checklist.movFeito) {
@@ -548,18 +562,15 @@ export default function App() {
         return;
       }
       
-      // APENAS MOSTRA OS DADOS - NÃO CLASSIFICA
       setChecklist(prev => ({...prev, paAferida: true, satAferida: true}));
       setFeedbackSimulacao("Equipe: \"Doutor(a), aqui estão os dados: PA 80/40 mmHg, FC 36 bpm, SatO2 94% em ar ambiente. Extremidades frias.\"");
     }
 
-    // ATROPINA (REGRA: SÓ APÓS CHECAR INSTABILIDADE)
     else if (cmd.includes("atropina")) {
       if (!checklist.movFeito) {
         acionarCondutaErrada("Você tentou medicar sem realizar o MOV antes.");
         return;
       }
-      // BLOQUEIO SE NÃO FALOU QUE É INSTÁVEL
       if (!checklist.estabilidadeChecada) {
         acionarCondutaErrada("A equipe precisa saber: O paciente está ESTÁVEL ou INSTÁVEL? (Classifique a instabilidade verbalmente antes de medicar).");
         return;
@@ -574,10 +585,8 @@ export default function App() {
       setEsperandoDose("atropina");
     }
 
-    // MARCAPASSO (REGRA: SÓ APÓS CHECAR INSTABILIDADE)
     else if (cmd.includes("marcapasso") || cmd.includes("mp") || cmd.includes("pas") || cmd.includes("sedacao") || cmd.includes("ligar")) {
       
-      // BLOQUEIO SE NÃO FALOU QUE É INSTÁVEL
       if (!checklist.estabilidadeChecada) {
           acionarCondutaErrada("A equipe precisa saber: O paciente está ESTÁVEL ou INSTÁVEL? (Classifique a instabilidade verbalmente antes de indicar Marcapasso).");
           return;
@@ -588,7 +597,6 @@ export default function App() {
           return;
       }
 
-      // NOVO: PERGUNTA O TIPO SE AINDA NÃO DEFINIU
       if ((cmd.includes("marcapasso") || cmd.includes("mp")) && !checklist.tipoMpDefinido && !cmd.includes("transcutaneo")) {
           setEsperandoTipoMp(true);
           setFeedbackSimulacao("Equipe: \"Entendido, indicação de Marcapasso. Qual o tipo de Marcapasso vamos usar?\"");
@@ -596,9 +604,6 @@ export default function App() {
           return;
       }
 
-      // SUB-FLUXO DO MARCAPASSO
-      
-      // A. PÁS
       if (cmd.includes("pas") || cmd.includes("conectar")) {
           if (!checklist.tipoMpDefinido) { setEsperandoTipoMp(true); setFeedbackSimulacao("Qual o tipo de marcapasso?"); return; }
 
@@ -608,7 +613,6 @@ export default function App() {
           return;
       }
 
-      // B. SEDAÇÃO
       if (cmd.includes("sedacao") || cmd.includes("analgesia")) {
           if (!checklist.pasColocadas) {
               setFeedbackSimulacao("Equipe: \"Doutor, as pás ainda não foram conectadas.\"");
@@ -621,7 +625,6 @@ export default function App() {
           return;
       }
 
-      // C. LIGAR
       if (cmd.includes("ligar") || cmd.includes("config") || cmd.includes("fixo")) {
           if (!checklist.sedacaoFeita) {
               acionarCondutaErrada("ERRO CRÍTICO: Sedação necessária antes de ligar o Marcapasso.");
@@ -633,7 +636,6 @@ export default function App() {
           return;
       }
 
-      // D. AUMENTAR CORRENTE
       if (cmd.includes("aumentar") || cmd.includes("corrente")) {
           if (!checklist.mpLigado) {
               setFeedbackSimulacao("Equipe: \"O Marcapasso ainda está desligado.\"");
@@ -646,7 +648,6 @@ export default function App() {
           return;
       }
 
-      // E. CHECAR PULSO
       if (cmd.includes("pulso") || cmd.includes("femoral")) {
           if (!checklist.capturaEletrica) {
               setFeedbackSimulacao("Equipe: \"Ainda não visualizamos captura elétrica.\"");
@@ -658,7 +659,6 @@ export default function App() {
           return;
       }
 
-      // F. MARGEM DE SEGURANÇA
       if (cmd.includes("margem") || cmd.includes("10%") || cmd.includes("seguranca")) {
           if (!checklist.capturaMecanica) {
               acionarCondutaErrada("Confirme o pulso mecânico antes de ajustar a margem.");
@@ -671,11 +671,9 @@ export default function App() {
           return;
       }
       
-      // Se nada acima, instrução genérica
       setFeedbackSimulacao("Equipe: \"Vamos preparar o Marcapasso. Guie a sequência: Pás, Sedação, Ligar, Corrente, Pulso e Margem.\"");
     }
 
-    // EXAME FÍSICO
     else if (cmd.includes("exame") || cmd.includes("ausculta")) {
       setFeedbackSimulacao("Equipe: \"Exame físico: Pulmões limpos, extremidades frias.\"");
     }
@@ -689,17 +687,205 @@ export default function App() {
     }
   };
 
+  // --- DADOS DOS CARDS PARA O CARROSSEL ---
+  const cardsData = [
+    {
+        id: "bradi",
+        gradient: "linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)",
+        imgSrc: "https://i.imgur.com/FC7vOtt.png",
+        imgAlt: "Coração Vermelho Bradicardia",
+        imgSize: "180px", 
+        label: "EMERGÊNCIA",
+        title: "Bradicardias",
+        desc: "Organize condutas e salve vidas em 5 passos.",
+        iconFooter: "https://i.imgur.com/FC7vOtt.png",
+        textFooter: "App de Protocolos",
+        btnText: "ABRIR",
+        action: () => setTelaAtual("selecao_bradi")
+    },
+    {
+        id: "taqui",
+        gradient: "linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)",
+        imgSrc: "https://i.imgur.com/oqjaMV4.png",
+        imgAlt: "Raio Taquicardia",
+        imgSize: "130px",
+        label: "ARRITMIA",
+        title: "Taquicardias",
+        desc: "Diagnóstico e cardioversão rápida.",
+        iconFooter: "https://i.imgur.com/oqjaMV4.png",
+        textFooter: "Módulo em Breve",
+        btnText: "ATUALIZAR",
+        action: () => alert("Em construção: Módulo de Taquicardias em breve!")
+    },
+    {
+        id: "pcr_chocavel",
+        gradient: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+        imgSrc: "https://i.imgur.com/uPXPUD8.png", // IMAGEM DO USUÁRIO
+        imgAlt: "Monitor FV TV",
+        imgSize: "200px", // AUMENTADO PARA 200px
+        label: "PCR CHOCÁVEL",
+        title: "FV e TV sem Pulso",
+        desc: "Protocolo de desfibrilação imediata.",
+        iconFooter: "https://i.imgur.com/uPXPUD8.png",
+        textFooter: "Parada Cardíaca",
+        btnText: "ABRIR",
+        action: () => alert("Em construção: Protocolo de PCR Chocável")
+    },
+    {
+        id: "assistolia",
+        gradient: "linear-gradient(135deg, #059669 0%, #34d399 100%)", // Tons verdes
+        imgSrc: "https://i.imgur.com/T4QxtYu.png", 
+        imgAlt: "Linha reta Assistolia",
+        imgSize: "210px", // AUMENTADO PARA 210px
+        label: "PCR NÃO CHOCÁVEL",
+        title: "Assistolia e AESP",
+        desc: "Protocolo de adrenalina e via aérea.",
+        iconFooter: "https://i.imgur.com/T4QxtYu.png",
+        textFooter: "Parada Cardíaca",
+        btnText: "ABRIR",
+        action: () => alert("Em construção: Protocolo de Assistolia/AESP")
+    },
+    {
+        id: "sca",
+        gradient: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)", // Tons vermelhos
+        imgSrc: "https://i.imgur.com/lbebkzD.png", // IMAGEM DO USUÁRIO
+        imgAlt: "Coração SCA",
+        imgSize: "200px", // AUMENTADO PARA 200px
+        label: "CORONÁRIA",
+        title: "S. Coronariana Aguda",
+        desc: "IAM com e sem supra de ST.",
+        iconFooter: "https://i.imgur.com/lbebkzD.png",
+        textFooter: "Cardiologia",
+        btnText: "ABRIR",
+        action: () => alert("Em construção: Protocolo de SCA")
+    }
+  ];
+
+  // Duplicando a lista para garantir o loop infinito visual
+  const infiniteCards = [...cardsData, ...cardsData, ...cardsData];
+
   // --- ESTILOS GERAIS ---
   const styles = {
     container: {
       minHeight: "100vh",
       backgroundColor: "#f0f2f5",
-      fontFamily: "Arial, sans-serif",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
       padding: "20px",
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
       boxSizing: "border-box" as const
+    },
+    menuContainer: {
+        width: "100%",
+        maxWidth: "900px",
+        padding: "20px 0",
+        textAlign: "left" as const,
+        overflow: "hidden" 
+    },
+    headerTitle: {
+        fontSize: "32px",
+        fontWeight: "800",
+        color: "#1c1c1e",
+        marginBottom: "20px",
+        paddingLeft: "10px"
+    },
+    sectionTitle: {
+        fontSize: "22px",
+        fontWeight: "700",
+        color: "#1c1c1e",
+        marginBottom: "15px",
+        paddingLeft: "10px",
+        marginTop: "30px"
+    },
+    marqueeContainer: {
+        overflow: "hidden", 
+        width: "100%",
+        padding: "40px 0", 
+        marginTop: "-40px"
+    },
+    marqueeTrack: {
+        display: "flex",
+        gap: "25px",
+        width: "max-content", 
+        paddingLeft: "20px",
+        paddingRight: "20px"
+    },
+    bigCard: {
+        flex: "0 0 300px",
+        minHeight: "380px",
+        borderRadius: "20px",
+        position: "relative" as const,
+        overflow: "hidden",
+        cursor: "pointer",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+        transition: "transform 0.2s, box-shadow 0.2s",
+        display: "flex",
+        flexDirection: "column" as const,
+        justifyContent: "space-between"
+    },
+    cardTopPadding: {
+         padding: "30px 20px 20px 20px",
+         flex: "1 0 auto", 
+         display: "flex",
+         flexDirection: "column" as const,
+         justifyContent: "flex-end", 
+         zIndex: 2,
+         color: "white",
+         background: "linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0) 30%)"
+    },
+    cardBottomBar: {
+         padding: "15px 20px",
+         display: "flex",
+         alignItems: "center",
+         justifyContent: "space-between",
+         backgroundColor: "rgba(0,0,0,0.2)", 
+         backdropFilter: "blur(10px)",
+         borderTop: "1px solid rgba(255,255,255,0.15)",
+         zIndex: 2,
+         color: "white"
+    },
+    cardImage3D: {
+        position: "absolute" as const,
+        top: "30%", // IMAGEM MAIS ALTA
+        left: "50%",
+        transform: "translate(-50%, -50%)", 
+        objectFit: "contain" as const,
+        zIndex: 1,
+        filter: "drop-shadow(0px 15px 25px rgba(0,0,0,0.4)) drop-shadow(0px 5px 10px rgba(0,0,0,0.2))"
+    },
+    textLabel: {
+        fontSize: "12px", 
+        opacity: 0.9, 
+        textTransform: "uppercase" as const, 
+        letterSpacing: "1px", 
+        fontWeight: 700,
+        marginBottom: "5px",
+        textAlign: "left" as const
+    },
+    actionButton: {
+        backgroundColor: "rgba(255,255,255,0.25)",
+        border: "1px solid rgba(255,255,255,0.3)",
+        color: "white",
+        padding: "8px 24px",
+        borderRadius: "20px",
+        fontWeight: "bold",
+        fontSize: "14px",
+        cursor: "pointer",
+    },
+    // ... (Outros estilos mantidos: smallCard, card, monitor, etc.)
+    smallCard: {
+        flex: "1 1 200px",
+        backgroundColor: "white",
+        borderRadius: "16px",
+        padding: "20px",
+        boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
+        display: "flex",
+        flexDirection: "column" as const,
+        justifyContent: "space-between",
+        height: "160px",
+        cursor: "not-allowed",
+        opacity: 0.8
     },
     card: {
       backgroundColor: "white",
@@ -761,45 +947,113 @@ export default function App() {
     }
   };
 
-  // ==========================================
-  // RENDERIZAÇÃO DAS TELAS
-  // ==========================================
-
+  // --- NOVA TELA DE MENU ---
   if (telaAtual === "menu") {
     return (
       <div style={styles.container}>
-        <div style={styles.card}>
-          <h1 style={styles.titulo}>Protocolos de Emergência</h1>
-          <p style={{marginBottom: "30px", color: "#666"}}>Selecione a emergência:</p>
-          <button style={{...styles.btnMenu, backgroundColor: "#3b82f6"}} onClick={() => setTelaAtual("selecao_bradi")}>
-            ❤️ Bradicardias
-          </button>
-          <button style={{...styles.btnMenu, backgroundColor: "#ef4444"}} onClick={() => alert("Em construção: Taquicardias")}>
-            ⚡ Taquicardias
-          </button>
+        <style>{`
+            .hide-scrollbar::-webkit-scrollbar { display: none; }
+            .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        `}</style>
+
+        <div style={styles.menuContainer}>
+            <h1 style={styles.headerTitle}>Protocolos de Emergência</h1>
+            
+            <h3 style={styles.sectionTitle}>Comece Agora</h3>
+            
+            <div 
+                style={styles.marqueeContainer}
+                className="hide-scrollbar"
+                ref={scrollContainerRef}
+                onMouseMove={handleMouseMoveScroll}
+                onMouseLeave={handleMouseLeaveScroll}
+            >
+                <div style={styles.marqueeTrack}>
+                    {infiniteCards.map((card, index) => (
+                        <div 
+                            key={`${card.id}-${index}`}
+                            onClick={card.action}
+                            style={{...styles.bigCard, background: card.gradient}}
+                        >
+                            <img 
+                                src={card.imgSrc} 
+                                alt={card.imgAlt} 
+                                style={{...styles.cardImage3D, width: card.imgSize, height: card.imgSize}} 
+                            />
+                            
+                            <div style={styles.cardTopPadding}>
+                                <p style={styles.textLabel}>{card.label}</p>
+                                <h2 style={{margin: "0 0 8px 0", fontSize: "28px", fontWeight: 800}}>{card.title}</h2>
+                                <p style={{margin: "0", fontSize: "15px", opacity: 0.95, lineHeight: "1.5", maxWidth: "90%"}}>
+                                    {card.desc}
+                                </p>
+                            </div>
+
+                            <div style={styles.cardBottomBar}>
+                                <div style={{display: "flex", alignItems: "center"}}>
+                                    <img src={card.iconFooter} style={{width: "24px", height: "24px", marginRight: "10px", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.2))"}} />
+                                    <span style={{fontWeight: 600, fontSize: "15px"}}>{card.textFooter}</span>
+                                </div>
+                                <button style={styles.actionButton}>{card.btnText}</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <h3 style={styles.sectionTitle}>Mais Protocolos</h3>
+            <div style={{display: "flex", gap: "20px", flexWrap: "wrap", justifyContent: "flex-start", paddingLeft: "10px"}}>
+                <div style={styles.smallCard}>
+                    <div style={{fontSize: "30px", marginBottom: "10px"}}>🫀</div>
+                    <div>
+                        <h4 style={{margin: "0", color: "#333"}}>IAM com Supra</h4>
+                        <p style={{fontSize: "12px", color: "#666", marginTop: "5px"}}>Trombolítico ou Angioplastia?</p>
+                    </div>
+                </div>
+                 <div style={styles.smallCard}>
+                    <div style={{fontSize: "30px", marginBottom: "10px"}}>🧠</div>
+                    <div>
+                        <h4 style={{margin: "0", color: "#333"}}>AVC Agudo</h4>
+                        <p style={{fontSize: "12px", color: "#666", marginTop: "5px"}}>Protocolo de trombólise e janela.</p>
+                    </div>
+                </div>
+                 <div style={styles.smallCard}>
+                    <div style={{fontSize: "30px", marginBottom: "10px"}}>🦠</div>
+                    <div>
+                        <h4 style={{margin: "0", color: "#333"}}>Sepse 1h</h4>
+                        <p style={{fontSize: "12px", color: "#666", marginTop: "5px"}}>Bundle da primeira hora.</p>
+                    </div>
+                </div>
+            </div>
         </div>
       </div>
     );
   }
 
+  // --- MANTENDO AS OUTRAS TELAS INTACTAS ---
   if (telaAtual === "selecao_bradi") {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <button onClick={irParaMenu} style={{float: "left", background: "none", border: "none", fontSize: "20px", cursor: "pointer"}}>⬅</button>
-          <h2 style={styles.titulo}>Bradicardias</h2>
-          <p style={{marginBottom: "30px", color: "#666"}}>Escolha o modo de uso:</p>
+          <button onClick={irParaMenu} style={{float: "left", background: "none", border: "none", fontSize: "20px", cursor: "pointer"}}>⬅ Voltar</button>
+          <div style={{clear: "both", marginTop: "20px"}}>
+             <img src="https://i.imgur.com/FC7vOtt.png" style={{width: "80px", marginBottom: "10px"}} />
+             <h2 style={styles.titulo}>Módulo de Bradicardias</h2>
+          </div>
+          <p style={{marginBottom: "30px", color: "#666"}}>Como você deseja estudar hoje?</p>
           <button style={{...styles.btnMenu, backgroundColor: "#10b981"}} onClick={() => setTelaAtual("fluxo_bradi")}>
-            📖 Fluxo de Atendimento
+            📖 Fluxo de Atendimento (Teoria)
           </button>
           <button style={{...styles.btnMenu, backgroundColor: "#8b5cf6"}} onClick={() => setTelaAtual("treino_bradi")}>
-            🎮 Modo Treino (Simulação)
+            🎮 Modo Treino (Simulação Real)
           </button>
         </div>
       </div>
     );
   }
 
+  // ... (Resto do código para fluxo_bradi e treino_bradi mantido igual ao anterior)
+  
   if (telaAtual === "fluxo_bradi") {
     const dados = protocoloBradicardia[passoFluxo as keyof typeof protocoloBradicardia];
     const corTopo = { neutro: "#3b82f6", sucesso: "#10b981", alerta: "#f59e0b", perigo: "#ef4444", azul: "#0ea5e9" };
@@ -870,7 +1124,6 @@ export default function App() {
 
         <div style={styles.card}>
           
-          {/* === OVERLAY DE CONDUTA ERRADA === */}
           {msgErroAtual && (
             <div style={styles.errorOverlay}>
                 <div style={{textAlign: "center", maxWidth: "80%"}}>
@@ -953,7 +1206,6 @@ export default function App() {
           {!isApresentacao && (
             <div style={{animation: "fadeIn 0.5s", opacity: msgErroAtual ? 0.3 : 1, pointerEvents: msgErroAtual ? "none" : "auto"}}>
               
-              {/* MONITOR */}
               {monitorVisivel && (
                 <div style={styles.monitor}>
                   <div style={{display: "flex", justifyContent: "space-between"}}>
@@ -975,7 +1227,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* ECG */}
               {mostrarECG && (
                   <div style={{margin: "20px 0", textAlign: "center", animation: "fadeIn 0.5s"}}>
                       <img
@@ -987,12 +1238,10 @@ export default function App() {
                   </div>
               )}
 
-              {/* FEEDBACK */}
               <div style={styles.feedbackBox}>
                 {feedbackSimulacao}
               </div>
 
-              {/* COMANDO DE TEXTO + VOZ */}
               {(etapaSimulacao !== "sucesso" && etapaSimulacao !== "piora") && (
                 <form onSubmit={enviarComando} style={{marginTop: "20px"}}>
                   <p style={{fontSize: "16px", fontWeight: "bold", marginBottom: "10px", color: "#1f2937"}}>
