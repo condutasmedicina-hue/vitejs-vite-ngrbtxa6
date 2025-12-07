@@ -241,10 +241,14 @@ export default function App() {
 
   // --- REFS PARA O SCROLL HÍBRIDO ---
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const BASE_SPEED = 1.5; 
+  
+  // VELOCIDADE FIXADA EM 0.65
+  const BASE_SPEED = 0.70; 
+  
   const currentSpeedRef = useRef(BASE_SPEED); 
   const targetSpeedRef = useRef(BASE_SPEED); 
   const animationFrameRef = useRef<number | null>(null);
+  const scrollPosRef = useRef(0);
 
   // --- FUNÇÕES DE NAVEGAÇÃO ---
   const irParaMenu = () => {
@@ -337,18 +341,35 @@ export default function App() {
               currentSpeedRef.current += (targetSpeedRef.current - currentSpeedRef.current) * easingFactor;
               
               container.scrollLeft += currentSpeedRef.current;
+              scrollPosRef.current += currentSpeedRef.current; // Mantem controle no ref float
 
-              // Loop Infinito visual
-               if (container.scrollLeft >= (container.scrollWidth / 4) * 3) {
-                   container.scrollLeft = container.scrollWidth / 4; 
-               }
-               if (container.scrollLeft <= 0) {
-                   container.scrollLeft = (container.scrollWidth / 4) * 2;
-               }
+              // LÓGICA DE REINÍCIO PERFEITO
+              // Largura do Card (300px) + Gap (25px) = 325px
+              // 5 Cards únicos * 325px = 1625px (Tamanho de 1 Bloco)
+              // Usamos 6 blocos no array abaixo para garantir buffer infinito
+              const singleBlockWidth = 1625;
+
+              // Quando passar de 2 blocos completos, volta 1 bloco
+              // Isso mantém a posição visual inalterada, mas reseta o numero
+              if (scrollPosRef.current >= singleBlockWidth * 2) {
+                  container.scrollLeft -= singleBlockWidth;
+                  scrollPosRef.current -= singleBlockWidth;
+              } 
+              // Se rolar pra trás (mouse na esquerda)
+              else if (scrollPosRef.current <= singleBlockWidth) {
+                  container.scrollLeft += singleBlockWidth;
+                  scrollPosRef.current += singleBlockWidth;
+              }
           }
           animationFrameRef.current = requestAnimationFrame(loop);
       };
       
+      // Inicia o scroll um pouco a frente para ter buffer para esquerda
+      if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollLeft = 1625 * 1.5;
+          scrollPosRef.current = 1625 * 1.5;
+      }
+
       loop();
       
       return () => {
@@ -722,7 +743,7 @@ export default function App() {
         gradient: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
         imgSrc: "https://i.imgur.com/uPXPUD8.png", // IMAGEM DO USUÁRIO
         imgAlt: "Monitor FV TV",
-        imgSize: "200px", // AUMENTADO PARA 200px
+        imgSize: "200px", 
         label: "PCR CHOCÁVEL",
         title: "FV e TV sem Pulso",
         desc: "Protocolo de desfibrilação imediata.",
@@ -736,7 +757,7 @@ export default function App() {
         gradient: "linear-gradient(135deg, #059669 0%, #34d399 100%)", // Tons verdes
         imgSrc: "https://i.imgur.com/T4QxtYu.png", 
         imgAlt: "Linha reta Assistolia",
-        imgSize: "210px", // AUMENTADO PARA 210px
+        imgSize: "210px", 
         label: "PCR NÃO CHOCÁVEL",
         title: "Assistolia e AESP",
         desc: "Protocolo de adrenalina e via aérea.",
@@ -750,7 +771,7 @@ export default function App() {
         gradient: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)", // Tons vermelhos
         imgSrc: "https://i.imgur.com/lbebkzD.png", // IMAGEM DO USUÁRIO
         imgAlt: "Coração SCA",
-        imgSize: "200px", // AUMENTADO PARA 200px
+        imgSize: "200px", 
         label: "CORONÁRIA",
         title: "S. Coronariana Aguda",
         desc: "IAM com e sem supra de ST.",
@@ -761,8 +782,8 @@ export default function App() {
     }
   ];
 
-  // Duplicando a lista para garantir o loop infinito visual
-  const infiniteCards = [...cardsData, ...cardsData, ...cardsData];
+  // AUMENTADO PARA 6 VEZES PARA GARANTIR BUFFER INFINITO
+  const infiniteCards = [...cardsData, ...cardsData, ...cardsData, ...cardsData, ...cardsData, ...cardsData];
 
   // --- ESTILOS GERAIS ---
   const styles = {
@@ -778,7 +799,7 @@ export default function App() {
     },
     menuContainer: {
         width: "100%",
-        maxWidth: "900px",
+        // REMOVIDO MAX-WIDTH PARA OCUPAR TELA TODA
         padding: "20px 0",
         textAlign: "left" as const,
         overflow: "hidden" 
@@ -1052,8 +1073,6 @@ export default function App() {
     );
   }
 
-  // ... (Resto do código para fluxo_bradi e treino_bradi mantido igual ao anterior)
-  
   if (telaAtual === "fluxo_bradi") {
     const dados = protocoloBradicardia[passoFluxo as keyof typeof protocoloBradicardia];
     const corTopo = { neutro: "#3b82f6", sucesso: "#10b981", alerta: "#f59e0b", perigo: "#ef4444", azul: "#0ea5e9" };
